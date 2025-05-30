@@ -80,6 +80,42 @@ async def google_auth(token: dict):
         logger.error(f"Google auth error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.post("/google/callback")
+async def google_oauth_callback(callback_data: dict):
+    """Handle Google OAuth callback with authorization code"""
+    try:
+        logger.info(f"Received callback data: {callback_data}")
+        
+        # Handle both 'code' and 'access_token' for flexibility
+        code = callback_data.get("code")
+        access_token = callback_data.get("access_token")
+        
+        if access_token:
+            # If we receive an access token directly, use it
+            logger.info("Processing access token directly")
+            auth_response = await SupabaseService.sign_in_with_oauth_token("google", access_token)
+        elif code:
+            # If we receive a code, try to exchange it
+            logger.info(f"Processing Google OAuth callback with code: {code[:10]}...")
+            auth_response = await SupabaseService.exchange_oauth_code("google", code)
+        else:
+            raise HTTPException(status_code=400, detail="Authorization code or access token required")
+        
+        return {
+            "access_token": auth_response.session.access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": auth_response.user.id,
+                "email": auth_response.user.email or "",
+                "role": auth_response.user.user_metadata.get("role", "user")
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Google OAuth callback error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
 @router.get("/google/url")
 async def get_google_auth_url():
     """Get Google OAuth URL for frontend redirect (implicit flow)"""

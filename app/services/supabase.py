@@ -61,6 +61,25 @@ class SupabaseService:
             raise e
     
     @classmethod
+    async def exchange_oauth_code(cls, provider: str, code: str):
+        """Exchange OAuth authorization code for tokens"""
+        try:
+            client = cls.get_client()
+            logger.info(f"Attempting to exchange OAuth code for provider: {provider}")
+            
+            # Try using the session exchange method
+            response = client.auth.exchange_code_for_session({"auth_code": code})
+            
+            if response.user is None:
+                raise Exception("Failed to exchange code for session")
+                
+            return response
+            
+        except Exception as e:
+            logger.error(f"Supabase OAuth code exchange error: {str(e)}")
+            raise e
+    
+    @classmethod
     async def sign_in_with_oauth_token(cls, provider: str, access_token: str):
         """Exchange OAuth token with Supabase"""
         try:
