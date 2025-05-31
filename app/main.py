@@ -48,6 +48,14 @@ try:
     logger.info("Agent routes loaded")
 except ImportError as e:
     logger.warning(f"Agent routes not available: {e}")
+
+try:
+    from app.api.contracts import router as contracts_router
+    app.include_router(contracts_router, prefix="/api/v1", tags=["contracts"])
+    logger.info("Contract routes loaded")
+except ImportError as e:
+    logger.warning(f"Contract routes not available: {e}")
+
 # Include routers
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["authentication"])
 app.include_router(monitoring_router, prefix="/api/v1/monitor", tags=["campaign-monitoring"])  # ✅ Include monitoring

@@ -8,6 +8,7 @@ from app.models.negotiation_models import (
     PlatformType, ContentType, LocationType
 )
 from app.services.pricing_service import PricingService
+from app.services.contract_service import contract_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -373,10 +374,33 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
                 f"• Usage Rights: {session.current_offer.usage_rights}"
             ])
         
+        # 🆕 GENERATE DIGITAL CONTRACT AUTOMATICALLY
+        try:
+            contract = contract_service.generate_contract(
+                session_id=session_id,
+                negotiation_state=session,
+                brand_contact_email=f"legal@{session.brand_details.name.lower().replace(' ', '')}.com",
+                brand_contact_name=f"{session.brand_details.name} Legal Team",
+                influencer_email=f"{session.influencer_profile.name.lower().replace(' ', '.')}@email.com",
+                influencer_contact="+1-XXX-XXX-XXXX"
+            )
+            
+            contract_info = f"\n\n📄 **Digital Contract Generated!**\n"
+            contract_info += f"Contract ID: `{contract.contract_id}`\n"
+            contract_info += f"Status: {contract.status.value.replace('_', ' ').title()}\n"
+            contract_info += f"Ready for signatures from both parties.\n"
+            contract_info += f"\n🔗 You can view and sign the contract using the contract ID above."
+            
+            logger.info(f"Contract {contract.contract_id} generated for session {session_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to generate contract for session {session_id}: {e}")
+            contract_info = f"\n\n📄 **Contract Generation**: Our legal team will prepare the digital contract within 2 business days."
+        
         message = self.conversation_templates["agreement"].format(
             final_terms="\n".join(final_terms_lines),
             brand_name=session.brand_details.name
-        )
+        ) + contract_info
         
         self._add_to_conversation(session_id, "assistant", message)
         return message
