@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from datetime import datetime
 
 class PlatformType(str, Enum):
     INSTAGRAM = "instagram"
@@ -134,3 +135,53 @@ class PlatformConfig:
     base_rates: Dict[ContentType, float]
     engagement_weight: float = 1.0
     follower_weight: float = 1.0
+
+# Contract-related models for contract generation system
+
+class ContractStatus(str, Enum):
+    """Contract status enumeration"""
+    PENDING_SIGNATURES = "pending_signatures"
+    BRAND_SIGNED = "brand_signed"
+    INFLUENCER_SIGNED = "influencer_signed"
+    FULLY_EXECUTED = "fully_executed"
+    CANCELLED = "cancelled"
+
+@dataclass
+class DigitalSignature:
+    """Digital signature information"""
+    signer_name: str
+    signer_email: str
+    signature_timestamp: datetime
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+
+@dataclass
+class ContractTerms:
+    """Contract terms and legal information"""
+    contract_id: str
+    session_id: str
+    brand_name: str
+    influencer_name: str
+    campaign_title: str
+    deliverables: List[ContentDeliverable]
+    total_amount: float
+    currency: str = "USD"
+    campaign_start_date: datetime = field(default_factory=datetime.now)
+    campaign_end_date: datetime = field(default_factory=datetime.now)
+    contract_date: datetime = field(default_factory=datetime.now)
+    payment_terms: str = "50% upfront, 50% on completion"
+    usage_rights: str = "6 months social media usage"
+    exclusivity_period_days: Optional[int] = None
+    revisions_included: int = 2
+    status: ContractStatus = ContractStatus.PENDING_SIGNATURES
+    brand_signature: Optional[DigitalSignature] = None
+    influencer_signature: Optional[DigitalSignature] = None
+    brand_contact_email: Optional[str] = None
+    brand_contact_name: Optional[str] = None
+    influencer_email: Optional[str] = None
+    influencer_contact: Optional[str] = None
+    campaign_description: Optional[str] = None
+    cancellation_policy: Optional[str] = None
+    dispute_resolution: Optional[str] = None
+    governing_law: Optional[str] = None
+    legal_terms: Optional[str] = None

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 import logging
@@ -51,6 +52,36 @@ async def view_contract_html(contract_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error generating contract HTML: {e}")
         raise HTTPException(status_code=500, detail="Error generating contract view")
+
+@router.get("/{contract_id}/pdf")
+async def download_contract_pdf(contract_id: str):
+    """Download contract as PDF"""
+    try:
+        # Generate PDF bytes
+        pdf_bytes = contract_service.generate_contract_pdf(contract_id)
+        
+        # Get contract for filename
+        contract = contract_service.get_contract(contract_id)
+        if not contract:
+            raise HTTPException(status_code=404, detail=f"Contract {contract_id} not found")
+        
+        # Create filename
+        filename = f"contract_{contract_id[:8]}_{contract.brand_name.replace(' ', '_')}.pdf"
+        
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Type": "application/pdf"
+            }
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error generating PDF for contract {contract_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error generating PDF")
 
 @router.post("/{contract_id}/sign")
 async def sign_contract(contract_id: str, request: SignContractRequest, http_request: Request) -> Dict[str, Any]:

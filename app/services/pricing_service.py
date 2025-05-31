@@ -240,22 +240,18 @@ class PricingService:
                             amount = float(groups[1].replace(',', ''))
                             if groups[0] in self.currency_symbols:
                                 symbol = groups[0]
+                                currency_code = self.currency_symbols[symbol]
                             elif groups[0] in self.exchange_rates:
                                 currency_code = groups[0]
                     break
             
             if amount > 0:
-                # Determine currency
-                detected_currency = "USD"  # Default
-                
-                if symbol and symbol in self.currency_symbols:
-                    detected_currency = self.currency_symbols[symbol]
-                elif currency_code and currency_code in self.exchange_rates:
-                    detected_currency = currency_code
-                
                 # Convert to USD
-                usd_amount = self.convert_to_usd(amount, detected_currency)
-                return usd_amount, detected_currency
+                if currency_code:
+                    amount_usd = self.convert_to_usd(amount, currency_code)
+                    return amount_usd, currency_code
+                else:
+                    return amount, "USD"  # Default to USD if no currency detected
             
         # Fallback - treat as USD
         try:
@@ -783,6 +779,204 @@ class PricingService:
         
         return proposal
     
+    def generate_budget_constrained_proposal(
+        self,
+        influencer_profile: InfluencerProfile,
+        content_requirements: Dict[str, int],
+        brand_budget: float,  # Already in USD
+        negotiation_flexibility_percent: float = 15.0  # Default 15% flexibility
+    ) -> Dict[str, any]:
+        """
+        Generate a proposal that respects budget constraints with limited negotiation flexibility.
+        
+        Three scenarios:
+        1. Market rates <= budget: Use market rates
+        2. Market rates 10-20% above budget: Negotiate within flexibility range
+        3. Market rates >20% above budget: Scale down to budget + max flexibility
+        
+        Args:
+            influencer_profile: The influencer's profile
+            content_requirements: Dictionary of content types and quantities
+            brand_budget: Brand's maximum budget in USD
+            negotiation_flexibility_percent: Maximum % above budget for negotiation (10-20%)
+        
+        Returns:
+            Dictionary with proposal details and budget analysis
+        """
+        logger.info(f"Generating budget-constrained proposal for budget ${brand_budget:.2f} with {negotiation_flexibility_percent}% flexibility")
+        
+        # Calculate absolute maximum budget (budget + flexibility)
+        max_negotiation_budget = brand_budget * (1 + negotiation_flexibility_percent / 100)
+        
+        # First, calculate pure market rates
+        total_market_cost = 0.0
+        item_breakdown = {}
+        
+        for content_key, quantity in content_requirements.items():
+            try:
+                parts = content_key.split('_', 1)
+                if len(parts) == 2:
+                    platform_str, content_str = parts
+                    platform = PlatformType(platform_str.lower())
+                    content_type = ContentType(content_str.lower())
+                    
+                    rate_data = self.calculate_location_aware_rate(
+                        influencer_profile, platform, content_type
+                    )
+                    
+                    item_total = rate_data.final_rate * quantity
+                    total_market_cost += item_total
+                    
+                    item_breakdown[content_key] = {
+                        "market_unit_rate": rate_data.final_rate,
+                        "quantity": quantity,
+                        "market_total": item_total,
+                        "market_insights": rate_data.market_insights
+                    }
+            except (ValueError, KeyError):
+                logger.warning(f"Invalid content key format: {content_key}")
+                continue
+        
+        # Determine negotiation strategy based on market cost vs budget
+        budget_ratio = total_market_cost / brand_budget if brand_budget > 0 else float('inf')
+        
+        if budget_ratio <= 1.0:
+            # Scenario 1: Market rates are within budget - use market rates
+            strategy = "within_budget"
+            final_total_cost = total_market_cost
+            negotiation_message = "Market rates are within your budget. This is an excellent opportunity!"
+            
+            # Keep market rates as final rates
+            for content_key in item_breakdown:
+                item_breakdown[content_key]["final_unit_rate"] = item_breakdown[content_key]["market_unit_rate"]
+                item_breakdown[content_key]["final_total"] = item_breakdown[content_key]["market_total"]
+                # COMPATIBILITY: Add legacy keys expected by conversation handler
+                item_breakdown[content_key]["unit_rate"] = item_breakdown[content_key]["market_unit_rate"]
+                item_breakdown[content_key]["total"] = item_breakdown[content_key]["market_total"]
+                
+        elif budget_ratio <= (1 + negotiation_flexibility_percent / 100):
+            # Scenario 2: Market rates are 10-20% above budget - start negotiation at budget, allow up to flexibility
+            strategy = "negotiable_above_budget"
+            # CRITICAL FIX: Start at budget, not market rates, but allow negotiation up to max_negotiation_budget
+            final_total_cost = brand_budget  # Start negotiation at budget level
+            overage_percent = (budget_ratio - 1) * 100
+            negotiation_message = f"Market rates are {overage_percent:.1f}% above budget. We'll start at your budget and negotiate up to {negotiation_flexibility_percent}% if needed."
+            
+            # Scale rates to budget level but mark as negotiable up to market rates
+            budget_scaling_factor = brand_budget / total_market_cost
+            for content_key in item_breakdown:
+                market_rate = item_breakdown[content_key]["market_unit_rate"]
+                budget_rate = market_rate * budget_scaling_factor
+                quantity = item_breakdown[content_key]["quantity"]
+                
+                item_breakdown[content_key]["final_unit_rate"] = budget_rate
+                item_breakdown[content_key]["final_total"] = budget_rate * quantity
+                item_breakdown[content_key]["market_unit_rate_for_negotiation"] = market_rate
+                item_breakdown[content_key]["negotiation_note"] = f"Starting at budget rate, can negotiate up to market rate (${market_rate:.2f})"
+                # COMPATIBILITY: Add legacy keys expected by conversation handler
+                item_breakdown[content_key]["unit_rate"] = budget_rate
+                item_breakdown[content_key]["total"] = budget_rate * quantity
+                
+        else:
+            # Scenario 3: Market rates are >20% above budget - scale down to max flexibility
+            strategy = "scale_to_max_budget"
+            final_total_cost = max_negotiation_budget
+            scaling_factor = max_negotiation_budget / total_market_cost
+            overage_percent = (budget_ratio - 1) * 100
+            negotiation_message = f"Market rates are {overage_percent:.1f}% above budget. We've adjusted to our maximum flexibility of {negotiation_flexibility_percent}% above budget."
+            
+            # Scale down all rates proportionally to fit within max budget
+            for content_key in item_breakdown:
+                original_rate = item_breakdown[content_key]["market_unit_rate"]
+                scaled_rate = original_rate * scaling_factor
+                quantity = item_breakdown[content_key]["quantity"]
+                
+                item_breakdown[content_key]["final_unit_rate"] = scaled_rate
+                item_breakdown[content_key]["final_total"] = scaled_rate * quantity
+                item_breakdown[content_key]["scaling_factor"] = scaling_factor
+                item_breakdown[content_key]["negotiation_note"] = f"Rate scaled by {scaling_factor:.2f} to fit within maximum budget flexibility"
+                # COMPATIBILITY: Add legacy keys expected by conversation handler
+                item_breakdown[content_key]["unit_rate"] = scaled_rate
+                item_breakdown[content_key]["total"] = scaled_rate * quantity
+        
+        # Get location context for cultural approach
+        location_context = self.get_location_context(influencer_profile.location)
+        negotiation_strategy = self.get_negotiation_strategy(influencer_profile)
+        
+        # Generate comprehensive budget analysis
+        budget_analysis = {
+            "brand_budget": brand_budget,
+            "negotiation_flexibility_percent": negotiation_flexibility_percent,
+            "max_negotiation_budget": max_negotiation_budget,
+            "total_market_cost": total_market_cost,
+            "final_proposed_cost": final_total_cost,
+            "budget_ratio": budget_ratio,
+            "strategy": strategy,
+            "negotiation_message": negotiation_message,
+            "overage_amount": max(0, total_market_cost - brand_budget),
+            "within_flexibility": budget_ratio <= (1 + negotiation_flexibility_percent / 100),
+            "requires_scaling": strategy == "scale_to_max_budget"
+        }
+        
+        # Add strategy-specific guidance for negotiations
+        if strategy == "within_budget":
+            negotiation_guidance = {
+                "approach": "confident",
+                "talking_points": [
+                    "Market rates align perfectly with your budget",
+                    "This represents excellent value for the deliverables",
+                    "No budget constraints limit this collaboration"
+                ],
+                "flexibility": "Can offer additional value within budget"
+            }
+        elif strategy == "negotiable_above_budget":
+            negotiation_guidance = {
+                "approach": "collaborative",
+                "talking_points": [
+                    f"Market rates are {(budget_ratio - 1) * 100:.1f}% above budget",
+                    "This is within our negotiation flexibility range",
+                    "We can work together to find the right balance"
+                ],
+                "flexibility": f"Up to {negotiation_flexibility_percent}% above budget"
+            }
+        else:  # scale_to_max_budget
+            negotiation_guidance = {
+                "approach": "budget_conscious",
+                "talking_points": [
+                    f"Market rates exceed budget by {(budget_ratio - 1) * 100:.1f}%",
+                    f"We've adjusted to our maximum flexibility of {negotiation_flexibility_percent}%",
+                    "Rates have been scaled to fit within budget constraints"
+                ],
+                "flexibility": f"Maximum {negotiation_flexibility_percent}% above budget (${max_negotiation_budget:.2f})"
+            }
+        
+        proposal = {
+            "total_cost": final_total_cost,
+            "item_breakdown": item_breakdown,
+            "currency": location_context["currency"],
+            "negotiation_strategy": negotiation_strategy,
+            "budget_analysis": budget_analysis,
+            "negotiation_guidance": negotiation_guidance,
+            "cultural_approach": location_context["cultural_context"],
+            "payment_recommendations": self._get_payment_recommendations(influencer_profile.location),
+            "timeline_considerations": self._get_timeline_recommendations(influencer_profile.location)
+        }
+        
+        # Add location-specific considerations
+        if influencer_profile.location == LocationType.INDIA:
+            proposal["india_specific"] = {
+                "volume_discount_available": final_total_cost > 1000,
+                "suggested_bundle_approach": True,
+                "milestone_payment_preferred": True,
+                "portfolio_value_emphasis": True,  # Added for conversation handler compatibility
+                "budget_consciousness": "high",
+                "relationship_building_priority": "very_high",
+                "flexibility_note": "Indian market typically expects some negotiation flexibility"
+            }
+        
+        logger.info(f"Budget-constrained proposal generated: ${final_total_cost:.2f} (strategy: {strategy})")
+        return proposal
+
     def _get_payment_recommendations(self, location: LocationType) -> List[str]:
         """Get location-specific payment recommendations."""
         payment_recs = {

@@ -10,3 +10,4 @@ requests
 langchain-community
 pydantic
 jinja2
+weasyprint

@@ -158,7 +158,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         return message
 
     def generate_market_analysis(self, session_id: str) -> str:
-        """Generate market analysis message with location-aware pricing."""
+        """Generate market analysis message with budget-constrained pricing."""
         session = self.active_sessions.get(session_id)
         if not session:
             return "Session not found."
@@ -166,9 +166,9 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         influencer = session.influencer_profile
         brand = session.brand_details
         
-        # Generate location-specific proposal using enhanced pricing service
-        location_proposal = self.pricing_service.generate_location_specific_proposal(
-            influencer, brand.content_requirements, brand.budget
+        # Generate budget-constrained proposal using enhanced pricing service
+        location_proposal = self.pricing_service.generate_budget_constrained_proposal(
+            influencer, brand.content_requirements, brand.budget, negotiation_flexibility_percent=15.0
         )
         
         # Get location context for cultural intelligence
@@ -180,20 +180,31 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         for content_type, details in location_proposal["item_breakdown"].items():
             content_display = content_type.replace('_', ' ').title()
             
-            # Convert amounts to local currency for display
-            unit_rate_local = self.pricing_service.convert_from_usd(details['unit_rate'], local_currency)
-            total_local = self.pricing_service.convert_from_usd(details['total'], local_currency)
+            # Use final rates from budget-constrained proposal
+            unit_rate_local = self.pricing_service.convert_from_usd(details['final_unit_rate'], local_currency)
+            total_local = self.pricing_service.convert_from_usd(details['final_total'], local_currency)
             
             rate_breakdown_lines.append(
                 f"• {content_display}: {self.pricing_service.format_currency(unit_rate_local, local_currency)} × {details['quantity']} = {self.pricing_service.format_currency(total_local, local_currency)}"
             )
         
-        # Add cultural context information
+        # Add cultural context information and budget strategy
         cultural_note = ""
+        budget_analysis = location_proposal.get("budget_analysis", {})
+        budget_strategy = budget_analysis.get("strategy", "within_budget")
+        
+        if budget_strategy == "within_budget":
+            cultural_note += "\n\n💰 **Budget Analysis**: Excellent news! Market rates align perfectly with your budget allocation."
+        elif budget_strategy == "negotiable_above_budget":
+            overage_percent = (budget_analysis.get("budget_ratio", 1.0) - 1) * 100
+            cultural_note += f"\n\n💰 **Budget Analysis**: Market rates are {overage_percent:.1f}% above budget, which is within our negotiation flexibility. We're confident we can find a mutually beneficial agreement."
+        elif budget_strategy == "scale_to_max_budget":
+            cultural_note += f"\n\n💰 **Budget Analysis**: We've adjusted our proposal to respect your budget constraints while maintaining fair compensation. Our rates reflect a balanced approach between market value and budget considerations."
+        
         if influencer.location.value.lower() == "india":
-            cultural_note = f"\n\n🌍 **Market Context**: We understand the Indian creator market and have tailored our rates accordingly. Our pricing reflects the volume-oriented approach and relationship-building focus that works well in this market."
+            cultural_note += f"\n\n🌍 **Market Context**: We understand the Indian creator market and have tailored our rates accordingly. Our pricing reflects the volume-oriented approach and relationship-building focus that works well in this market."
         elif location_context["market_maturity"] == "emerging":
-            cultural_note = f"\n\n🌍 **Market Context**: We've adjusted our proposal to reflect the local market dynamics in {influencer.location.value}."
+            cultural_note += f"\n\n🌍 **Market Context**: We've adjusted our proposal to reflect the local market dynamics in {influencer.location.value}."
         
         # Convert total to local currency for display
         total_value_local = self.pricing_service.convert_from_usd(location_proposal["total_cost"], local_currency)
@@ -220,9 +231,9 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         influencer = session.influencer_profile
         brand = session.brand_details
         
-        # Generate location-specific proposal using enhanced pricing service
-        location_proposal = self.pricing_service.generate_location_specific_proposal(
-            influencer, brand.content_requirements, brand.budget
+        # Generate budget-constrained proposal using enhanced pricing service
+        location_proposal = self.pricing_service.generate_budget_constrained_proposal(
+            influencer, brand.content_requirements, brand.budget, negotiation_flexibility_percent=15.0
         )
         
         # Get location context for currency formatting
@@ -440,8 +451,10 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         
         our_price_usd = session.current_offer.total_price if session.current_offer else 0
         
-        # CRITICAL: Get the brand's original budget constraint from session
+        # CRITICAL: Get the brand's budget constraints with 15% negotiation flexibility
         brand_budget_usd = session.brand_details.budget  # This is already in USD
+        max_negotiation_flexibility = 0.15  # 15% maximum flexibility
+        max_allowable_usd = brand_budget_usd * (1 + max_negotiation_flexibility)  # 15% above budget max
         
         if counter_price_usd:
             difference_usd = abs(counter_price_usd - our_price_usd)
@@ -451,74 +464,61 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
             our_price_local = self.pricing_service.convert_from_usd(our_price_usd, local_currency)
             difference_local = self.pricing_service.convert_from_usd(difference_usd, local_currency)
             
-            # CRITICAL: Never exceed the brand's budget constraint
-            max_allowable_usd = brand_budget_usd  # Brand's hard budget limit
+            # Convert max allowable budget to local currency for display
             max_allowable_local = self.pricing_service.convert_from_usd(max_allowable_usd, local_currency)
             
-            # Apply location-specific negotiation approach WITH budget constraints
+            # Apply location-specific negotiation approach WITH strict budget constraints (15% max)
             if session.influencer_profile.location.value.lower() == "india":
                 # Indian market approach - more collaborative and relationship-focused
                 if counter_price_usd > max_allowable_usd:
-                    analysis_response = f"I really appreciate your expertise and value! However, our campaign budget has a hard limit of {self.pricing_service.format_currency(max_allowable_local, local_currency)}. We'd love to find a creative way to work within this constraint."
+                    analysis_response = f"I really appreciate your expertise and value! However, our campaign budget allows for a maximum of {self.pricing_service.format_currency(max_allowable_local, local_currency)} (including our 15% negotiation flexibility). We'd love to find a creative way to work within this constraint."
                     compromise_suggestion = f"Could we structure this at {self.pricing_service.format_currency(max_allowable_local, local_currency)} with added benefits like portfolio showcase opportunities, long-term partnership rates, or performance bonuses that don't impact the base budget?"
-                elif counter_price_usd < our_price_usd * 0.7:
-                    analysis_response = "I appreciate you sharing your budget expectations with us. We understand that pricing negotiations are an important part of building a strong partnership in the Indian market."
-                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
-                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
-                    compromise_suggestion = f"Let's work together to find a solution. How about {self.pricing_service.format_currency(mid_price_local, local_currency)}? We could also structure this as a volume deal with potential for future collaborations at even better rates."
+                elif counter_price_usd <= brand_budget_usd:
+                    analysis_response = "That's within our base budget! We appreciate your understanding of our budget parameters."
+                    compromise_suggestion = f"We can definitely work with {self.pricing_service.format_currency(counter_price_local, local_currency)}. This demonstrates our mutual commitment to a successful partnership."
                 else:
-                    analysis_response = "That's a very reasonable request! We appreciate your professional approach to this discussion."
-                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
-                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
-                    compromise_suggestion = f"I think we can make {self.pricing_service.format_currency(mid_price_local, local_currency)} work. This demonstrates our commitment to building a long-term partnership with you."
+                    # Between budget and max allowable
+                    analysis_response = "That's a very reasonable request within our negotiation range! We appreciate your professional approach to this discussion."
+                    compromise_suggestion = f"I think we can make {self.pricing_service.format_currency(counter_price_local, local_currency)} work. This demonstrates our commitment to building a long-term partnership with you."
             
             elif negotiation_strategy["cultural_context"] == "direct":
                 # US/Western direct approach
                 if counter_price_usd > max_allowable_usd:
-                    analysis_response = f"Your rate is higher than our allocated campaign budget of {self.pricing_service.format_currency(max_allowable_local, local_currency)}. We need to stay within budget constraints."
+                    analysis_response = f"Your rate exceeds our maximum budget flexibility of {self.pricing_service.format_currency(max_allowable_local, local_currency)} (15% above our allocated budget). We need to stay within these constraints."
                     compromise_suggestion = f"Our maximum flexibility is {self.pricing_service.format_currency(max_allowable_local, local_currency)}. Can we add value through extended usage rights or performance incentives instead?"
-                elif counter_price_usd < our_price_usd * 0.7:
-                    analysis_response = "This price point is below market rate for the scope and your audience quality. Our budget analysis shows this would compromise the campaign value."
-                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
-                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
-                    compromise_suggestion = f"We can consider {self.pricing_service.format_currency(mid_price_local, local_currency)} if we adjust the deliverables or add performance bonuses."
+                elif counter_price_usd <= brand_budget_usd:
+                    analysis_response = "This is within our base budget allocation. We can work with this rate."
+                    compromise_suggestion = f"Let's move forward with {self.pricing_service.format_currency(counter_price_local, local_currency)}. This represents good value for both parties."
                 else:
+                    # Between budget and max allowable
                     analysis_response = "That's within our negotiation range. We can work with this."
-                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
-                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
-                    compromise_suggestion = f"Let's settle on {self.pricing_service.format_currency(mid_price_local, local_currency)}. This feels fair for both parties."
+                    compromise_suggestion = f"Let's settle on {self.pricing_service.format_currency(counter_price_local, local_currency)}. This feels fair for both parties."
             
             elif negotiation_strategy["cultural_context"] in ["warm_relationship", "relationship_respect"]:
                 # Relationship-focused markets (Brazil, etc.)
                 if counter_price_usd > max_allowable_usd:
-                    analysis_response = f"We appreciate you valuing the partnership highly! Our budget allows up to {self.pricing_service.format_currency(max_allowable_local, local_currency)}. Let's find a creative solution within this range."
+                    analysis_response = f"We appreciate you valuing the partnership highly! Our budget allows up to {self.pricing_service.format_currency(max_allowable_local, local_currency)} (15% above our base budget). Let's find a creative solution within this range."
                     compromise_suggestion = f"How about {self.pricing_service.format_currency(max_allowable_local, local_currency)} with relationship-building elements like co-marketing opportunities or exclusive partnership status?"
-                elif counter_price_usd < our_price_usd * 0.7:
-                    analysis_response = "We understand budget considerations and want to make this work for you. Building a great relationship is our priority."
-                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
-                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
-                    compromise_suggestion = f"What if we start with {self.pricing_service.format_currency(mid_price_local, local_currency)} for this campaign and explore better rates for future collaborations as our partnership grows?"
+                elif counter_price_usd <= brand_budget_usd:
+                    analysis_response = "This fits perfectly within our budget! We love working with creators who understand budget considerations."
+                    compromise_suggestion = f"What if we start with {self.pricing_service.format_currency(counter_price_local, local_currency)} for this campaign and explore even better rates for future collaborations as our partnership grows?"
                 else:
+                    # Between budget and max allowable
                     analysis_response = "Perfect! We love working with creators who value mutual success."
-                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
-                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
-                    compromise_suggestion = f"{self.pricing_service.format_currency(mid_price_local, local_currency)} sounds like a great foundation for our partnership."
+                    compromise_suggestion = f"{self.pricing_service.format_currency(counter_price_local, local_currency)} sounds like a great foundation for our partnership."
             
             else:
-                # Default approach with budget constraints
+                # Default approach with strict budget constraints
                 if counter_price_usd > max_allowable_usd:
-                    analysis_response = f"This exceeds our campaign budget allocation of {self.pricing_service.format_currency(max_allowable_local, local_currency)}."
+                    analysis_response = f"This exceeds our maximum budget flexibility of {self.pricing_service.format_currency(max_allowable_local, local_currency)} (15% above our allocated budget)."
                     compromise_suggestion = f"Our flexibility extends to {self.pricing_service.format_currency(max_allowable_local, local_currency)}. Can we find additional value to justify this investment?"
-                elif counter_price_usd < our_price_usd * 0.7:
-                    analysis_response = "This is significantly below market rates for the deliverables requested."
-                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
-                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
-                    compromise_suggestion = f"Would {self.pricing_service.format_currency(mid_price_local, local_currency)} work? We could also adjust the scope to fit your preferred budget."
+                elif counter_price_usd <= brand_budget_usd:
+                    analysis_response = "This fits within our base budget allocation."
+                    compromise_suggestion = f"We can work with {self.pricing_service.format_currency(counter_price_local, local_currency)}. This represents good value for the collaboration."
                 else:
+                    # Between budget and max allowable
                     analysis_response = "That's a reasonable request within our negotiation range."
-                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
-                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
-                    compromise_suggestion = f"How about we meet at {self.pricing_service.format_currency(mid_price_local, local_currency)}?"
+                    compromise_suggestion = f"How about we meet at {self.pricing_service.format_currency(counter_price_local, local_currency)}?"
         
         else:
             analysis_response = "I'd love to work with your pricing preferences."

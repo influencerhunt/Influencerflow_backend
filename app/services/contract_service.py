@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from dataclasses import asdict
 import json
 from jinja2 import Template
+from weasyprint import HTML
+from io import BytesIO
 
 from app.models.negotiation_models import (
     ContractTerms, ContractStatus, DigitalSignature, 
@@ -77,7 +79,7 @@ class ContractGenerationService:
             
             # Legal Terms
             usage_rights=agreed_terms.usage_rights,
-            exclusivity_period_days=agreed_terms.exclusivity_period_days,
+            exclusivity_period_days=getattr(agreed_terms, 'exclusivity_period_days', None),
             revisions_included=agreed_terms.revisions_included,
             cancellation_policy=self._get_cancellation_policy(),
             dispute_resolution=self._get_dispute_resolution(),
@@ -221,6 +223,25 @@ class ContractGenerationService:
         }
         
         return self.contract_template.render(**template_data)
+
+    def generate_contract_pdf(self, contract_id: str) -> bytes:
+        """Generate PDF from contract HTML"""
+        try:
+            # Get HTML content
+            html_content = self.generate_contract_pdf_content(contract_id)
+            
+            # Convert to PDF
+            html_doc = HTML(string=html_content)
+            pdf_buffer = BytesIO()
+            html_doc.write_pdf(pdf_buffer)
+            pdf_buffer.seek(0)
+            
+            logger.info(f"Successfully generated PDF for contract {contract_id}")
+            return pdf_buffer.getvalue()
+            
+        except Exception as e:
+            logger.error(f"Error generating PDF for contract {contract_id}: {e}")
+            raise ValueError(f"Failed to generate PDF: {str(e)}")
     
     def get_contract_summary(self, contract_id: str) -> Dict[str, Any]:
         """Get contract summary for API responses"""

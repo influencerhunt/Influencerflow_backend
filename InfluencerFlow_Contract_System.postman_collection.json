@@ -1,0 +1,321 @@
+{
+	"info": {
+		"_postman_id": "influencerflow-contract-system",
+		"name": "InfluencerFlow Contract System - Complete API Testing",
+		"description": "Complete API testing collection for InfluencerFlow Backend contract generation, signing, and PDF download functionality",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Contract Management",
+			"item": [
+				{
+					"name": "1. Get Contract Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/contracts/{{contractId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"contracts",
+								"{{contractId}}"
+							]
+						},
+						"description": "Retrieve detailed information about a specific contract including terms, status, and signatures"
+					},
+					"response": []
+				},
+				{
+					"name": "2. Get Contract Summary",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/contracts/{{contractId}}/summary",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"contracts",
+								"{{contractId}}",
+								"summary"
+							]
+						},
+						"description": "Get a simplified overview of the contract with key information"
+					},
+					"response": []
+				},
+				{
+					"name": "3. List All Contracts",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/contracts",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"contracts"
+							]
+						},
+						"description": "Retrieve a list of all contracts in the system"
+					},
+					"response": []
+				},
+				{
+					"name": "4. Get Contract Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/contracts/{{contractId}}/status",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"contracts",
+								"{{contractId}}",
+								"status"
+							]
+						},
+						"description": "Get the current status of a contract (pending_signatures, brand_signed, fully_executed, etc.)"
+					},
+					"response": []
+				}
+			],
+			"description": "Basic contract information and status endpoints"
+		},
+		{
+			"name": "Contract Viewing",
+			"item": [
+				{
+					"name": "5. View Contract HTML",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/contracts/{{contractId}}/view",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"contracts",
+								"{{contractId}}",
+								"view"
+							]
+						},
+						"description": "Get the HTML view of the contract for browser display"
+					},
+					"response": []
+				},
+				{
+					"name": "6. Download Contract PDF",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/pdf"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/contracts/{{contractId}}/pdf",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"contracts",
+								"{{contractId}}",
+								"pdf"
+							]
+						},
+						"description": "Download the contract as a PDF file. This will generate and return the PDF with proper content-type headers."
+					},
+					"response": []
+				}
+			],
+			"description": "Contract viewing and download endpoints including PDF generation"
+		},
+		{
+			"name": "Digital Signatures",
+			"item": [
+				{
+					"name": "7. Sign Contract (Brand)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"signer_type\": \"brand\",\n  \"signer_name\": \"Brand Legal Team\",\n  \"signer_email\": \"legal@brand.com\",\n  \"ip_address\": \"192.168.1.100\",\n  \"user_agent\": \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/contracts/{{contractId}}/sign",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"contracts",
+								"{{contractId}}",
+								"sign"
+							]
+						},
+						"description": "Add brand's digital signature to the contract. This will update the contract status and enable the influencer to sign."
+					},
+					"response": []
+				},
+				{
+					"name": "8. Sign Contract (Influencer)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"signer_type\": \"influencer\",\n  \"signer_name\": \"Demo Influencer\",\n  \"signer_email\": \"demo@influencer.com\",\n  \"ip_address\": \"192.168.1.101\",\n  \"user_agent\": \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/contracts/{{contractId}}/sign",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"contracts",
+								"{{contractId}}",
+								"sign"
+							]
+						},
+						"description": "Add influencer's digital signature to the contract. This will finalize the contract and make it fully executed."
+					},
+					"response": []
+				}
+			],
+			"description": "Digital signature endpoints for brands and influencers"
+		},
+		{
+			"name": "Testing Workflow",
+			"item": [
+				{
+					"name": "9. Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Basic health check to ensure the server is running"
+					},
+					"response": []
+				},
+				{
+					"name": "10. API Documentation",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/docs",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"docs"
+							]
+						},
+						"description": "Access the FastAPI automatic documentation (Swagger UI)"
+					},
+					"response": []
+				}
+			],
+			"description": "Basic testing and documentation endpoints"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Set default values if variables are not set",
+					"if (!pm.environment.get('baseUrl')) {",
+					"    pm.environment.set('baseUrl', 'http://localhost:8000');",
+					"}",
+					"",
+					"if (!pm.environment.get('contractId')) {",
+					"    pm.environment.set('contractId', '16dbf6a4-6cd0-41af-a2fc-8caeb40e6201');",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8000",
+			"description": "Base URL for the InfluencerFlow Backend API"
+		},
+		{
+			"key": "contractId",
+			"value": "16dbf6a4-6cd0-41af-a2fc-8caeb40e6201",
+			"description": "Test contract ID - replace with actual contract ID from your tests"
+		}
+	]
+}
