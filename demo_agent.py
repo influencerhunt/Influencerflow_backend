@@ -8,14 +8,22 @@ conversations between brands and influencers for collaboration deals.
 import asyncio
 import os
 from dotenv import load_dotenv
+import json
+from typing import Dict, Any
 
 # Load environment variables
 load_dotenv()
 
-from app.agents.negotiation_agent import AdvancedNegotiationAgent
+# Import the domain models
 from app.models.negotiation_models import (
     BrandDetails, InfluencerProfile, PlatformType, LocationType
 )
+
+# Import the pricing service  
+from app.services.pricing_service import PricingService
+
+# Import the negotiation agent
+from app.agents import AdvancedNegotiationAgent
 
 async def demo_negotiation():
     """Demonstrate a complete negotiation flow."""

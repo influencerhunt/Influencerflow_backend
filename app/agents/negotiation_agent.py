@@ -8,6 +8,7 @@ import os
 import json
 from dotenv import load_dotenv
 import logging
+from dataclasses import asdict
 
 from app.models.negotiation_models import (
     BrandDetails, InfluencerProfile, NegotiationState, 
@@ -315,7 +316,7 @@ Thought: {agent_scratchpad}
             
             USER JUST SAID: "{user_input}"
             
-            Please respond conversationally as Maya, considering the context and using tools if you need to calculate rates or analyze the situation.
+            Please respond conversationally as Alex, considering the context and using tools if you need to calculate rates or analyze the situation.
             """
             
             # Execute the agent
@@ -386,8 +387,8 @@ Thought: {agent_scratchpad}
             "brand": session.brand_details.name,
             "influencer": session.influencer_profile.name,
             "negotiation_round": session.negotiation_round,
-            "current_offer": session.current_offer.dict() if session.current_offer else None,
-            "agreed_terms": session.agreed_terms.dict() if session.agreed_terms else None,
+            "current_offer": asdict(session.current_offer) if session.current_offer else None,
+            "agreed_terms": asdict(session.agreed_terms) if session.agreed_terms else None,
             "conversation_length": len(session.conversation_history)
         }
 
