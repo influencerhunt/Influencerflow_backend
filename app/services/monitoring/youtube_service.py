@@ -89,27 +89,72 @@ def calculate_engagement_rate(channel_id: str, duration: str = "30d"):
     }
 
 def get_channel_id_by_username(username: str) -> str:
-    youtube = build_youtube_service()
-    response = youtube.channels().list(
-        part="id",
-        forUsername=username
-    ).execute()
-
-    if response["items"]:
-        return response["items"][0]["id"]
-    else:
-        # Try resolving from custom handle URL (e.g., youtube.com/@chrome)
-        search_response = youtube.search().list(
-            part="snippet",
-            q=username,
-            type="channel",
-            maxResults=1
+    try:
+        youtube = build_youtube_service()
+        
+        # Clean the username - remove @ if present
+        clean_username = username.strip().lstrip('@')
+        
+        # First try: forUsername (legacy usernames)
+        response = youtube.channels().list(
+            part="id",
+            forUsername=clean_username
         ).execute()
 
+        # Check if response has items and handle API errors
+        if "items" not in response:
+            raise ValueError(f"YouTube API error: {response.get('error', {}).get('message', 'Unknown error')}")
+
+        if response["items"]:
+            return response["items"][0]["id"]
+        
+        # Second try: Search for the channel by name/handle
+        search_response = youtube.search().list(
+            part="snippet",
+            q=clean_username,
+            type="channel",
+            maxResults=10
+        ).execute()
+
+        if "items" not in search_response:
+            raise ValueError(f"YouTube API error: {search_response.get('error', {}).get('message', 'Unknown error')}")
+
         if search_response["items"]:
+            # Look for exact matches first
+            for item in search_response["items"]:
+                channel_title = item["snippet"]["title"].lower()
+                channel_custom_url = item["snippet"].get("customUrl", "").lower()
+                
+                # Check for exact match in title or custom URL
+                if (clean_username.lower() == channel_title or 
+                    clean_username.lower() == channel_custom_url.lstrip('@') or
+                    f"@{clean_username.lower()}" == channel_custom_url):
+                    return item["snippet"]["channelId"]
+            
+            # If no exact match, return the first result
             return search_response["items"][0]["snippet"]["channelId"]
+        
+        # Third try: Search with @ prefix if not already present
+        if not username.startswith('@'):
+            search_with_at = youtube.search().list(
+                part="snippet",
+                q=f"@{clean_username}",
+                type="channel",
+                maxResults=5
+            ).execute()
+            
+            if "items" in search_with_at and search_with_at["items"]:
+                return search_with_at["items"][0]["snippet"]["channelId"]
+        
+        raise ValueError(f"Channel not found for: {username}")
+        
+    except Exception as e:
+        if "quota" in str(e).lower():
+            raise ValueError("YouTube API quota exceeded. Please check your API settings.")
+        elif "key" in str(e).lower() or "credential" in str(e).lower():
+            raise ValueError("YouTube API key not configured or invalid. Please check your .env file.")
         else:
-            raise ValueError("Channel ID not found for username/handle")
+            raise ValueError(f"Failed to find channel: {str(e)}")
 
 def fetch_video_comments(video_id: str, max_results: int = 20):
     youtube = build_youtube_service()
@@ -255,77 +300,132 @@ def fetch_recent_youtube_videos(channel_id: str) -> List[Dict]:
     return results
 
 def fetch_channel_overview(channel_id: str) -> Dict:
-    key = os.getenv("YOUTUBE_API_KEY")
-    base = YOUTUBE_API_BASE
+    try:
+        key = os.getenv("YOUTUBE_API_KEY")
+        base = YOUTUBE_API_BASE
 
-    # 1. Channel info
-    ch_response = requests.get(
-        f"{base}/channels",
-        params={
-            "part": "snippet,statistics,contentDetails",
-            "id": channel_id,
-            "key": key
-        }
-    )
-    ch_response.raise_for_status()
-    ch = ch_response.json()["items"][0]
+        if not key:
+            raise ValueError("YouTube API key not configured. Please add YOUTUBE_API_KEY to your .env file.")
 
-    uploads_playlist_id = ch["contentDetails"]["relatedPlaylists"]["uploads"]
-
-    # 2. Latest videos (5)
-    vids_response = requests.get(
-        f"{base}/playlistItems",
-        params={
-            "part": "snippet",
-            "playlistId": uploads_playlist_id,
-            "maxResults": 5,
-            "key": key
-        }
-    )
-    vids_response.raise_for_status()
-    videos = vids_response.json()["items"]
-
-    video_ids = [v["snippet"]["resourceId"]["videoId"] for v in videos]
-
-    # 3. Stats for those videos
-    stats_response = requests.get(
-        f"{base}/videos",
-        params={
-            "part": "statistics,contentDetails",
-            "id": ",".join(video_ids),
-            "key": key
-        }
-    )
-    stats_response.raise_for_status()
-    stats_data = stats_response.json()["items"]
-
-    # Return combined info
-    return {
-        "channel": {
-            "id": ch["id"],
-            "title": ch["snippet"]["title"],
-            "description": ch["snippet"]["description"],
-            "published_at": ch["snippet"]["publishedAt"],
-            "subscriber_count": ch["statistics"].get("subscriberCount"),
-            "total_views": ch["statistics"].get("viewCount"),
-            "video_count": ch["statistics"].get("videoCount")
-        },
-        "recent_videos": [
-            {
-                "video_id": vid.get("id"),
-                "url": f"https://youtube.com/watch?v={vid.get('id')}",
-                "title": vid.get("snippet", {}).get("title", ""),
-                "published_at": vid.get("snippet", {}).get("publishedAt", ""),
-                "views": vid.get("statistics", {}).get("viewCount", "0"),
-                "likes": vid.get("statistics", {}).get("likeCount", "0"),
-                "comments": vid.get("statistics", {}).get("commentCount", "0"),
-                "duration": vid.get("contentDetails", {}).get("duration", "")
+        # 1. Channel info
+        ch_response = requests.get(
+            f"{base}/channels",
+            params={
+                "part": "snippet,statistics,contentDetails",
+                "id": channel_id,
+                "key": key
             }
-            for vid in stats_data if "snippet" in vid and "statistics" in vid and "contentDetails" in vid
-        ]
+        )
+        ch_response.raise_for_status()
+        ch_data = ch_response.json()
+        
+        # Check if response has items and handle API errors
+        if "items" not in ch_data:
+            error_msg = ch_data.get("error", {}).get("message", "Unknown error")
+            raise ValueError(f"YouTube API error: {error_msg}")
+        
+        if not ch_data["items"]:
+            raise ValueError("Channel not found")
+            
+        ch = ch_data["items"][0]
 
-    }
-    # youtube_service.py
+        uploads_playlist_id = ch["contentDetails"]["relatedPlaylists"]["uploads"]
+
+        # 2. Latest videos (5)
+        vids_response = requests.get(
+            f"{base}/playlistItems",
+            params={
+                "part": "snippet",
+                "playlistId": uploads_playlist_id,
+                "maxResults": 5,
+                "key": key
+            }
+        )
+        vids_response.raise_for_status()
+        vids_data = vids_response.json()
+        
+        # Check if response has items and handle API errors
+        if "items" not in vids_data:
+            error_msg = vids_data.get("error", {}).get("message", "Unknown error")
+            raise ValueError(f"YouTube API error: {error_msg}")
+            
+        videos = vids_data["items"]
+
+        video_ids = [v["snippet"]["resourceId"]["videoId"] for v in videos]
+
+        if not video_ids:
+            # No videos found, return channel info with empty videos list
+            return {
+                "channel": {
+                    "id": ch["id"],
+                    "title": ch["snippet"]["title"],
+                    "description": ch["snippet"]["description"],
+                    "published_at": ch["snippet"]["publishedAt"],
+                    "subscriber_count": ch["statistics"].get("subscriberCount"),
+                    "total_views": ch["statistics"].get("viewCount"),
+                    "video_count": ch["statistics"].get("videoCount")
+                },
+                "recent_videos": []
+            }
+
+        # 3. Stats for those videos
+        stats_response = requests.get(
+            f"{base}/videos",
+            params={
+                "part": "statistics,contentDetails",
+                "id": ",".join(video_ids),
+                "key": key
+            }
+        )
+        stats_response.raise_for_status()
+        stats_data_response = stats_response.json()
+        
+        # Check if response has items and handle API errors
+        if "items" not in stats_data_response:
+            error_msg = stats_data_response.get("error", {}).get("message", "Unknown error")
+            raise ValueError(f"YouTube API error: {error_msg}")
+            
+        stats_data = stats_data_response["items"]
+
+        # Return combined info
+        return {
+            "channel": {
+                "id": ch["id"],
+                "title": ch["snippet"]["title"],
+                "description": ch["snippet"]["description"],
+                "published_at": ch["snippet"]["publishedAt"],
+                "subscriber_count": ch["statistics"].get("subscriberCount"),
+                "total_views": ch["statistics"].get("viewCount"),
+                "video_count": ch["statistics"].get("videoCount")
+            },
+            "recent_videos": [
+                {
+                    "video_id": vid.get("id"),
+                    "url": f"https://youtube.com/watch?v={vid.get('id')}",
+                    "title": vid.get("snippet", {}).get("title", ""),
+                    "published_at": vid.get("snippet", {}).get("publishedAt", ""),
+                    "views": vid.get("statistics", {}).get("viewCount", "0"),
+                    "likes": vid.get("statistics", {}).get("likeCount", "0"),
+                    "comments": vid.get("statistics", {}).get("commentCount", "0"),
+                    "duration": vid.get("contentDetails", {}).get("duration", "")
+                }
+                for vid in stats_data if "snippet" in vid and "statistics" in vid and "contentDetails" in vid
+            ]
+        }
+    except requests.exceptions.RequestException as e:
+        if "quota" in str(e).lower():
+            raise ValueError("YouTube API quota exceeded. Please check your API settings.")
+        elif "key" in str(e).lower() or "credential" in str(e).lower():
+            raise ValueError("YouTube API key not configured or invalid. Please check your .env file.")
+        else:
+            raise ValueError(f"Failed to fetch channel overview: {str(e)}")
+    except Exception as e:
+        if "quota" in str(e).lower():
+            raise ValueError("YouTube API quota exceeded. Please check your API settings.")
+        elif "key" in str(e).lower() or "credential" in str(e).lower():
+            raise ValueError("YouTube API key not configured or invalid. Please check your .env file.")
+        else:
+            raise ValueError(f"Failed to fetch channel overview: {str(e)}")
 
 def fetch_videos_from_playlist(playlist_id, youtube, max_results=5):
     request = youtube.playlistItems().list(
