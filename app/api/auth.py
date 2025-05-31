@@ -143,6 +143,36 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user)):
         "role": current_user.get("role", "user")
     }
 
+@router.post("/update-role")
+async def update_user_role(role_data: dict, current_user: dict = Depends(get_current_user)):
+    """Update user role - typically for new OAuth users"""
+    try:
+        new_role = role_data.get("role")
+        user_id = role_data.get("user_id") or current_user["id"]
+        
+        if not new_role:
+            raise HTTPException(status_code=400, detail="Role is required")
+        
+        if new_role not in ["user", "influencer", "brand", "admin"]:
+            raise HTTPException(status_code=400, detail="Invalid role")
+            
+        logger.info(f"Updating role for user {user_id} to {new_role}")
+        
+        # Update user metadata in Supabase
+        updated_user = await SupabaseService.update_user_metadata(user_id, {"role": new_role})
+        
+        return {
+            "id": user_id,
+            "email": current_user["email"],
+            "role": new_role,
+            "message": "Role updated successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update role error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
 # Protected routes examples
 @router.get("/protected")
 async def protected_route(current_user: dict = Depends(get_current_user)):

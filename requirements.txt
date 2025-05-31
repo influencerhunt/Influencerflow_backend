@@ -1,5 +1,11 @@
 fastapi
 uvicorn[standard]
-supabase
 python-multipart
 python-decouple
+langchain
+langchain-google-genai
+google-generativeai
+python-dotenv
+requests
+langchain-community
+pydantic

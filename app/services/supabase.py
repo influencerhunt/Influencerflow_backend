@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 class SupabaseService:
     _client: Optional[Client] = None
+    _admin_client: Optional[Client] = None
     
     @classmethod
     def get_client(cls) -> Client:
@@ -16,6 +17,15 @@ class SupabaseService:
                 settings.supabase_anon_key
             )
         return cls._client
+    
+    @classmethod
+    def get_admin_client(cls) -> Client:
+        if cls._admin_client is None:
+            cls._admin_client = create_client(
+                settings.supabase_url,
+                settings.supabase_service_role_key
+            )
+        return cls._admin_client
     
     @classmethod
     async def sign_up(cls, email: str, password: str, role: str = "user"):
@@ -144,6 +154,29 @@ class SupabaseService:
             
         except Exception as e:
             logger.error(f"Supabase get user error: {str(e)}")
+            raise e
+
+    @classmethod
+    async def update_user_metadata(cls, user_id: str, metadata: dict):
+        """Update user metadata"""
+        try:
+            client = cls.get_admin_client()
+            
+            # Use admin client to update user metadata
+            response = client.auth.admin.update_user_by_id(
+                user_id,
+                {
+                    "user_metadata": metadata
+                }
+            )
+            
+            if response.user is None:
+                raise Exception("Failed to update user metadata")
+                
+            return response.user
+            
+        except Exception as e:
+            logger.error(f"Supabase update user metadata error: {str(e)}")
             raise e
 
 supabase_service = SupabaseService() 
