@@ -83,7 +83,8 @@ class InfluencerSearchService:
             on_platform_count=len(on_platform_final),
             external_count=len(external_final),
             on_platform_influencers=on_platform_final,
-            external_influencers=external_final
+            external_influencers=external_final,
+            parsed_filters=filters
         )
     
     def _deduplicate_influencers(self, influencers: List[Influencer]) -> List[Influencer]:

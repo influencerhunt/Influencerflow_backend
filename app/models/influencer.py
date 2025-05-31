@@ -88,10 +88,11 @@ class SearchResponse:
     external_count: int
     on_platform_influencers: List[Influencer]
     external_influencers: List[Influencer]
+    parsed_filters: Optional[SearchFilters] = None
     
     def to_dict(self):
         """Convert search response to dictionary for JSON serialization"""
-        return {
+        response_dict = {
             "query": self.query,
             "total_results": self.total_results,
             "on_platform_count": self.on_platform_count,
@@ -101,3 +102,9 @@ class SearchResponse:
             # Legacy field for backward compatibility
             "influencers": [influencer.to_dict() for influencer in (self.on_platform_influencers + self.external_influencers)]
         }
+        
+        # Add parsed filters if available
+        if self.parsed_filters:
+            response_dict["parsed_filters"] = self.parsed_filters.to_dict()
+        
+        return response_dict
