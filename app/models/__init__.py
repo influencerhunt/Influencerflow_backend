@@ -1,3 +1,3 @@
-from .user import User, UserRole
+from .influencer import Influencer, SearchFilters, SearchRequest, SearchResponse, PlatformType, InfluencerSource
 
-__all__ = ["User", "UserRole"] 
+__all__ = ["Influencer", "SearchFilters", "SearchRequest", "SearchResponse", "PlatformType", "InfluencerSource"] 

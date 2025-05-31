@@ -3,3 +3,12 @@ uvicorn[standard]
 supabase
 python-multipart
 python-decouple
+google-generativeai
+langchain
+langchain-google-genai
+requests
+beautifulsoup4
+asyncio
+pymongo
+serper-api
+python-dotenv
