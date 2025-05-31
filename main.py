@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.auth import router as auth_router
+from app.routers.negotiation import router as negotiation_router
 from app.core.config import settings
 import logging
 
@@ -27,6 +29,7 @@ app.add_middleware(
 try:
     from app.api.auth import router as auth_router
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["authentication"])
+app.include_router(negotiation_router, prefix="/api/v1/negotiation", tags=["negotiation"])
     logger.info("Authentication routes loaded")
 except ImportError as e:
     logger.warning(f"Authentication routes not available: {e}")

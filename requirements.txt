@@ -2,7 +2,10 @@ fastapi
 uvicorn[standard]
 python-multipart
 python-decouple
-# Optional dependencies for full functionality
-# supabase
-# twilio
-# google-generativeai
+langchain
+langchain-google-genai
+google-generativeai
+python-dotenv
+requests
+langchain-community
+pydantic
