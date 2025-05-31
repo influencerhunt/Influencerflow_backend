@@ -4,6 +4,9 @@ from typing import List, Dict
 from googleapiclient.discovery import build
 from app.core.config import settings
 import re
+from app.services.monitoring.utils import get_start_date
+from googleapiclient.discovery import build
+from app.core.config import settings
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
@@ -13,6 +16,77 @@ def build_youtube_service():
 
 def extract_hashtags(text):
     return re.findall(r"#\w+", text)
+
+def calculate_engagement_rate(channel_id: str, duration: str = "30d"):
+    youtube = build("youtube", "v3", developerKey=settings.youtube_api_key)
+    start_date = get_start_date(duration)
+
+    # Step 1: Get uploads playlist ID
+    ch_resp = youtube.channels().list(
+        part="contentDetails",
+        id=channel_id
+    ).execute()
+
+    uploads_playlist = ch_resp["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+
+    # Step 2: Get recent video IDs from playlist after start_date
+    video_ids = []
+    next_page_token = None
+    while True:
+        playlist_resp = youtube.playlistItems().list(
+            part="snippet",
+            playlistId=uploads_playlist,
+            maxResults=50,
+            pageToken=next_page_token
+        ).execute()
+
+        for item in playlist_resp["items"]:
+            published = item["snippet"]["publishedAt"]
+            if published >= start_date:
+                video_ids.append(item["snippet"]["resourceId"]["videoId"])
+
+        next_page_token = playlist_resp.get("nextPageToken")
+        if not next_page_token:
+            break
+
+    # Step 3: Calculate engagement per video
+    engagement_rates = []
+    total_engagement = 0
+    count_with_views = 0
+
+    for i in range(0, len(video_ids), 50):
+        stats_resp = youtube.videos().list(
+            part="statistics,snippet",
+            id=",".join(video_ids[i:i+50])
+        ).execute()
+
+        for video in stats_resp["items"]:
+            stats = video.get("statistics", {})
+            views = int(stats.get("viewCount", 0))
+            likes = int(stats.get("likeCount", 0))
+            comments = int(stats.get("commentCount", 0))
+
+            if views > 0:
+                rate = round(((likes + comments) / views) * 100, 2)
+                engagement_rates.append({
+                    "video_id": video["id"],
+                    "title": video["snippet"]["title"],
+                    "views": views,
+                    "likes": likes,
+                    "comments": comments,
+                    "engagement_rate": rate
+                })
+                total_engagement += rate
+                count_with_views += 1
+
+    avg_rate = round(total_engagement / count_with_views, 2) if count_with_views else 0
+
+    return {
+        "channel_id": channel_id,
+        "video_count": count_with_views,
+        "average_engagement_rate": avg_rate,
+        "videos": engagement_rates
+    }
 
 def get_channel_id_by_username(username: str) -> str:
     youtube = build_youtube_service()
