@@ -1,15 +1,129 @@
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from app.models.negotiation_models import (
     InfluencerProfile, PlatformType, ContentType, LocationType, 
     MarketRateData, PlatformConfig
 )
 import json
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 class PricingService:
     def __init__(self):
+        # Currency exchange rates (approximate, should be fetched from API in production)
+        self.exchange_rates = {
+            "USD": 1.0,        # Base currency
+            "INR": 83.0,       # 1 USD = 83 INR (approximate)
+            "EUR": 0.85,       # 1 USD = 0.85 EUR
+            "GBP": 0.75,       # 1 USD = 0.75 GBP
+            "CAD": 1.35,       # 1 USD = 1.35 CAD
+            "AUD": 1.45,       # 1 USD = 1.45 AUD
+            "BRL": 5.2         # 1 USD = 5.2 BRL
+        }
+        
+        # Currency symbol mapping
+        self.currency_symbols = {
+            "$": "USD",
+            "₹": "INR",
+            "€": "EUR", 
+            "£": "GBP",
+            "C$": "CAD",
+            "A$": "AUD",
+            "R$": "BRL",
+            "¥": "JPY"
+        }
+        
+        # Enhanced location-based multipliers with currency support
+        self.location_configs = {
+            LocationType.US: {
+                "multiplier": 1.8,
+                "currency": "USD",
+                "cultural_context": "direct",
+                "negotiation_style": "professional_direct",
+                "base_rate_per_1k": 15.0,
+                "market_maturity": "high"
+            },
+            LocationType.UK: {
+                "multiplier": 1.6,
+                "currency": "GBP",
+                "cultural_context": "polite_direct",
+                "negotiation_style": "professional_courteous", 
+                "base_rate_per_1k": 12.0,
+                "market_maturity": "high"
+            },
+            LocationType.CANADA: {
+                "multiplier": 1.5,
+                "currency": "CAD",
+                "cultural_context": "friendly_professional",
+                "negotiation_style": "collaborative",
+                "base_rate_per_1k": 11.0,
+                "market_maturity": "high"
+            },
+            LocationType.AUSTRALIA: {
+                "multiplier": 1.4,
+                "currency": "AUD", 
+                "cultural_context": "casual_professional",
+                "negotiation_style": "straightforward",
+                "base_rate_per_1k": 10.0,
+                "market_maturity": "medium_high"
+            },
+            LocationType.GERMANY: {
+                "multiplier": 1.3,
+                "currency": "EUR",
+                "cultural_context": "structured_professional",
+                "negotiation_style": "detail_oriented",
+                "base_rate_per_1k": 9.0,
+                "market_maturity": "medium_high"
+            },
+            LocationType.FRANCE: {
+                "multiplier": 1.2,
+                "currency": "EUR",
+                "cultural_context": "formal_elegant",
+                "negotiation_style": "relationship_focused",
+                "base_rate_per_1k": 8.0,
+                "market_maturity": "medium"
+            },
+            LocationType.JAPAN: {
+                "multiplier": 1.1,
+                "currency": "USD",
+                "cultural_context": "respectful_formal",
+                "negotiation_style": "consensus_building",
+                "base_rate_per_1k": 7.5,
+                "market_maturity": "medium"
+            },
+            LocationType.BRAZIL: {
+                "multiplier": 0.8,
+                "currency": "BRL",
+                "cultural_context": "warm_relationship",
+                "negotiation_style": "personal_connection",
+                "base_rate_per_1k": 4.5,
+                "market_maturity": "emerging"
+            },
+            LocationType.INDIA: {
+                "multiplier": 0.6,
+                "currency": "INR", 
+                "cultural_context": "relationship_respect",
+                "negotiation_style": "value_conscious_respectful",
+                "base_rate_per_1k": 200.0,  # Base rate in INR
+                "market_maturity": "emerging_high_volume",
+                "local_insights": {
+                    "preferred_payment": "milestone_based",
+                    "typical_negotiation": "expect_counter_offers",
+                    "content_volume": "higher_quantity_expected",
+                    "relationship_importance": "very_high",
+                    "price_sensitivity": "high"
+                }
+            },
+            LocationType.OTHER: {
+                "multiplier": 1.0,
+                "currency": "USD",
+                "cultural_context": "adaptable",
+                "negotiation_style": "flexible",
+                "base_rate_per_1k": 6.0,
+                "market_maturity": "medium"
+            }
+        }
         self.platform_configs = {
             PlatformType.INSTAGRAM: PlatformConfig(
                 name="Instagram",
@@ -76,6 +190,114 @@ class PricingService:
             LocationType.OTHER: 1.0
         }
 
+    def parse_budget_amount(self, budget_input) -> Tuple[float, str]:
+        """
+        Parse budget input to extract amount and currency.
+        
+        Args:
+            budget_input: Can be a string like "₹7,500", "$5000", or a float like 7500
+            
+        Returns:
+            Tuple of (amount_in_usd, original_currency)
+        """
+        if isinstance(budget_input, (int, float)):
+            # If it's just a number, assume USD
+            return float(budget_input), "USD"
+        
+        if isinstance(budget_input, str):
+            # Clean the string
+            budget_str = budget_input.strip()
+            
+            # Extract currency symbol and amount using multiple patterns
+            # Pattern 1: Symbol prefix (₹7,500, $100, €85)
+            # Pattern 2: Currency code suffix (7500 INR, 100 USD)  
+            # Pattern 3: Currency code prefix (INR 7500, USD 100)
+            
+            # More robust patterns that handle numbers with or without commas
+            patterns = [
+                r'([₹$€£¥])\s*([\d,]+(?:\.\d{2})?)',                 # ₹7,500 or ₹10000 - handles both
+                r'([\d,]+(?:\.\d{2})?)\s+([A-Z]{3})',                # 7,500 INR or 7500 INR - handles both  
+                r'([A-Z]{3})\s+([\d,]+(?:\.\d{2})?)'                 # INR 7,500 or INR 7500 - handles both
+            ]
+            
+            symbol = None
+            amount = 0
+            currency_code = None
+            
+            for pattern in patterns:
+                match = re.search(pattern, budget_str)
+                if match:
+                    groups = match.groups()
+                    if len(groups) == 2:
+                        # Determine which group is amount vs currency
+                        if groups[0].isdigit() or ',' in groups[0] or '.' in groups[0]:
+                            # First group is amount
+                            amount = float(groups[0].replace(',', ''))
+                            if groups[1] in self.exchange_rates:
+                                currency_code = groups[1]
+                        elif groups[1].isdigit() or ',' in groups[1] or '.' in groups[1]:
+                            # Second group is amount
+                            amount = float(groups[1].replace(',', ''))
+                            if groups[0] in self.currency_symbols:
+                                symbol = groups[0]
+                            elif groups[0] in self.exchange_rates:
+                                currency_code = groups[0]
+                    break
+            
+            if amount > 0:
+                # Determine currency
+                detected_currency = "USD"  # Default
+                
+                if symbol and symbol in self.currency_symbols:
+                    detected_currency = self.currency_symbols[symbol]
+                elif currency_code and currency_code in self.exchange_rates:
+                    detected_currency = currency_code
+                
+                # Convert to USD
+                usd_amount = self.convert_to_usd(amount, detected_currency)
+                return usd_amount, detected_currency
+            
+        # Fallback - treat as USD
+        try:
+            amount = float(str(budget_input).replace(',', '').replace('$', '').replace('₹', ''))
+            return amount, "USD"
+        except:
+            return 1000.0, "USD"  # Default fallback
+    
+    def convert_to_usd(self, amount: float, from_currency: str) -> float:
+        """Convert amount from any currency to USD."""
+        if from_currency == "USD":
+            return amount
+        
+        exchange_rate = self.exchange_rates.get(from_currency, 1.0)
+        # For most currencies, we divide by exchange rate to get USD
+        # Example: ₹8300 / 83 = $100 USD
+        return amount / exchange_rate
+    
+    def convert_from_usd(self, usd_amount: float, to_currency: str) -> float:
+        """Convert USD amount to any currency."""
+        if to_currency == "USD":
+            return usd_amount
+        
+        exchange_rate = self.exchange_rates.get(to_currency, 1.0)
+        return usd_amount * exchange_rate
+    
+    def format_currency(self, amount: float, currency: str) -> str:
+        """Format amount with appropriate currency symbol."""
+        symbol_map = {v: k for k, v in self.currency_symbols.items()}
+        symbol = symbol_map.get(currency, "$")
+        
+        if currency == "INR":
+            # Indian formatting with lakhs/crores
+            if amount >= 10000000:  # 1 crore
+                return f"₹{amount/10000000:.1f}Cr"
+            elif amount >= 100000:  # 1 lakh
+                return f"₹{amount/100000:.1f}L"
+            else:
+                return f"₹{amount:,.0f}"
+        else:
+            return f"{symbol}{amount:,.2f}"
+
     def calculate_market_rate(
         self, 
         influencer_profile: InfluencerProfile, 
@@ -128,7 +350,10 @@ class PricingService:
                 base_rate_per_1k_followers=base_rate,
                 engagement_multiplier=engagement_multiplier,
                 location_multiplier=location_multiplier,
-                final_rate=round(final_rate, 2)
+                final_rate=round(final_rate, 2),
+                base_rate=base_rate,
+                engagement_bonus=engagement_multiplier,
+                follower_bonus=follower_multiplier
             )
             
         except Exception as e:
@@ -140,7 +365,10 @@ class PricingService:
                 base_rate_per_1k_followers=0.5,
                 engagement_multiplier=1.0,
                 location_multiplier=1.0,
-                final_rate=50.0  # Minimum default rate
+                final_rate=50.0,  # Minimum default rate
+                base_rate=0.5,
+                engagement_bonus=1.0,
+                follower_bonus=1.0
             )
 
     def get_rate_breakdown(
@@ -280,3 +508,320 @@ class PricingService:
             "target_budget": target_budget,
             "suggestions": suggestions
         }
+    
+    def get_location_context(self, location: LocationType) -> Dict[str, any]:
+        """Get detailed location context for pricing and negotiation strategy."""
+        return self.location_configs.get(location, self.location_configs[LocationType.OTHER])
+    
+    def calculate_location_aware_rate(
+        self, 
+        influencer_profile: InfluencerProfile, 
+        platform: PlatformType, 
+        content_type: ContentType
+    ) -> MarketRateData:
+        """Enhanced market rate calculation with location intelligence."""
+        # Get base market rate
+        base_rate_data = self.calculate_market_rate(influencer_profile, platform, content_type)
+        
+        # Get location context
+        location_context = self.get_location_context(influencer_profile.location)
+        
+        # Apply location-specific adjustments
+        location_multiplier = location_context["multiplier"]
+        base_rate_per_1k = location_context["base_rate_per_1k"]
+        
+        # For India and other emerging markets, use volume-based pricing
+        if influencer_profile.location == LocationType.INDIA:
+            # Indian market specific calculation
+            adjusted_rate = self._calculate_indian_market_rate(
+                influencer_profile, platform, content_type, base_rate_data
+            )
+        else:
+            # Standard location multiplier application
+            adjusted_rate = base_rate_data.final_rate * location_multiplier
+        
+        # Create enhanced rate data with location context
+        return MarketRateData(
+            platform=platform,
+            content_type=content_type,
+            base_rate=base_rate_data.final_rate / location_multiplier,  # Original base rate
+            engagement_bonus=base_rate_data.final_rate * 0.1,  # Engagement component
+            follower_bonus=base_rate_data.final_rate * 0.1,   # Follower component
+            location_multiplier=location_multiplier,
+            final_rate=adjusted_rate,
+            currency=location_context["currency"],
+            market_insights={
+                "location": influencer_profile.location.value,
+                "market_maturity": location_context["market_maturity"],
+                "cultural_context": location_context["cultural_context"],
+                "negotiation_style": location_context["negotiation_style"]
+            }
+        )
+    
+    def _calculate_indian_market_rate(
+        self,
+        influencer_profile: InfluencerProfile,
+        platform: PlatformType,
+        content_type: ContentType,
+        base_rate_data: MarketRateData
+    ) -> float:
+        """Specialized pricing calculation for Indian market."""
+        # Indian market characteristics
+        followers = influencer_profile.followers
+        engagement_rate = influencer_profile.engagement_rate
+        
+        # Tier-based pricing for Indian market
+        if followers < 10000:  # Micro influencers
+            base_per_1k = 1.5
+            engagement_multiplier = 0.8
+        elif followers < 50000:  # Small influencers  
+            base_per_1k = 2.0
+            engagement_multiplier = 1.0
+        elif followers < 100000:  # Medium influencers
+            base_per_1k = 2.5
+            engagement_multiplier = 1.2
+        elif followers < 500000:  # Large influencers
+            base_per_1k = 3.0
+            engagement_multiplier = 1.4
+        else:  # Mega influencers
+            base_per_1k = 4.0
+            engagement_multiplier = 1.6
+        
+        # Platform adjustments for Indian market
+        platform_multipliers = {
+            PlatformType.INSTAGRAM: 1.0,
+            PlatformType.YOUTUBE: 1.8,  # YouTube is very popular in India
+            PlatformType.LINKEDIN: 0.7,
+            PlatformType.TIKTOK: 0.6,   # Banned but similar platforms
+            PlatformType.TWITTER: 0.5
+        }
+        
+        # Content type adjustments
+        content_multipliers = {
+            ContentType.INSTAGRAM_REEL: 1.5,  # Reels are very popular in India
+            ContentType.INSTAGRAM_POST: 1.0,
+            ContentType.INSTAGRAM_STORY: 0.4,
+            ContentType.YOUTUBE_LONG_FORM: 2.0,
+            ContentType.YOUTUBE_SHORTS: 1.2,
+            ContentType.LINKEDIN_POST: 0.8,
+            ContentType.LINKEDIN_VIDEO: 1.0,
+            ContentType.TWITTER_POST: 0.4,
+            ContentType.TWITTER_VIDEO: 0.6
+        }
+        
+        # Calculate rate
+        follower_component = (followers / 1000) * base_per_1k
+        engagement_component = follower_component * (engagement_rate * 100) * engagement_multiplier * 0.1
+        platform_adjustment = platform_multipliers.get(platform, 1.0)
+        content_adjustment = content_multipliers.get(content_type, 1.0)
+        
+        final_rate = (follower_component + engagement_component) * platform_adjustment * content_adjustment
+        
+        # Ensure minimum viable rate
+        min_rate = 15.0 if followers > 1000 else 8.0
+        
+        return max(final_rate, min_rate)
+    
+    def get_negotiation_strategy(self, influencer_profile: InfluencerProfile) -> Dict[str, any]:
+        """Get location-specific negotiation strategy and cultural insights."""
+        location_context = self.get_location_context(influencer_profile.location)
+        
+        strategy = {
+            "primary_approach": location_context["negotiation_style"],
+            "cultural_context": location_context["cultural_context"],
+            "market_maturity": location_context["market_maturity"],
+            "currency": location_context["currency"]
+        }
+        
+        # Add location-specific strategies
+        if influencer_profile.location == LocationType.INDIA:
+            strategy.update({
+                "key_tactics": [
+                    "Emphasize long-term partnership potential",
+                    "Highlight brand prestige and portfolio value", 
+                    "Be open to volume-based negotiations",
+                    "Consider milestone-based payments",
+                    "Show respect for creator's content quality"
+                ],
+                "cultural_notes": [
+                    "Relationship building is crucial",
+                    "Price negotiations are expected and welcomed",
+                    "Family/team involvement in decisions is common",
+                    "Timeline flexibility often requested",
+                    "Portfolio enhancement value is important"
+                ],
+                "pricing_insights": [
+                    "Volume discounts are common",
+                    "Bundle deals preferred",
+                    "Performance bonuses well received",
+                    "Early payment discounts effective",
+                    "Referral incentives valued"
+                ]
+            })
+        elif influencer_profile.location == LocationType.US:
+            strategy.update({
+                "key_tactics": [
+                    "Be direct and professional",
+                    "Focus on ROI and performance metrics",
+                    "Emphasize brand alignment and values",
+                    "Offer clear terms and quick decisions"
+                ],
+                "cultural_notes": [
+                    "Time is valued highly",
+                    "Professional boundaries respected", 
+                    "Contract details important",
+                    "Performance measurement expected"
+                ]
+            })
+        elif influencer_profile.location == LocationType.BRAZIL:
+            strategy.update({
+                "key_tactics": [
+                    "Build personal connection first",
+                    "Show enthusiasm for collaboration",
+                    "Be flexible on creative control",
+                    "Emphasize brand story and values"
+                ],
+                "cultural_notes": [
+                    "Relationships come before business",
+                    "Warm, personal communication preferred",
+                    "Creative freedom highly valued",
+                    "Social impact considerations important"
+                ]
+            })
+        
+        return strategy
+    
+    def generate_location_specific_proposal(
+        self,
+        influencer_profile: InfluencerProfile,
+        content_requirements: Dict[str, int],
+        brand_budget: float  # This is already in USD from parse_budget_amount
+    ) -> Dict[str, any]:
+        """Generate a culturally appropriate proposal based on location that respects the brand budget."""
+        location_context = self.get_location_context(influencer_profile.location)
+        negotiation_strategy = self.get_negotiation_strategy(influencer_profile)
+        
+        # CRITICAL: brand_budget is already in USD, so we use it directly
+        # Calculate market rates first
+        total_market_cost = 0.0
+        item_breakdown = {}
+        
+        for content_key, quantity in content_requirements.items():
+            try:
+                parts = content_key.split('_', 1)
+                if len(parts) == 2:
+                    platform_str, content_str = parts
+                    platform = PlatformType(platform_str.lower())
+                    content_type = ContentType(content_str.lower())
+                    
+                    rate_data = self.calculate_location_aware_rate(
+                        influencer_profile, platform, content_type
+                    )
+                    
+                    item_total = rate_data.final_rate * quantity
+                    total_market_cost += item_total
+                    
+                    item_breakdown[content_key] = {
+                        "unit_rate": rate_data.final_rate,
+                        "quantity": quantity,
+                        "total": item_total,
+                        "market_insights": rate_data.market_insights
+                    }
+            except (ValueError, KeyError):
+                continue
+        
+        # FIXED: Respect budget constraints strictly - never exceed brand_budget
+        if total_market_cost > brand_budget:
+            # Scale down the rates proportionally to fit budget
+            budget_ratio = brand_budget / total_market_cost
+            adjusted_total_cost = 0.0
+            
+            # Apply budget scaling to each item
+            for content_key in item_breakdown:
+                original_unit_rate = item_breakdown[content_key]["unit_rate"]
+                adjusted_unit_rate = original_unit_rate * budget_ratio
+                quantity = item_breakdown[content_key]["quantity"]
+                adjusted_total = adjusted_unit_rate * quantity
+                
+                item_breakdown[content_key]["unit_rate"] = adjusted_unit_rate
+                item_breakdown[content_key]["total"] = adjusted_total
+                adjusted_total_cost += adjusted_total
+            
+            final_cost = adjusted_total_cost  # This will be <= brand_budget
+            budget_note = f"Adjusted rates to fit within budget constraint"
+        else:
+            # Even if market cost is lower, stay within budget
+            final_cost = min(total_market_cost, brand_budget)
+            budget_note = "Market rates are within budget range"
+        
+        # Generate location-specific proposal structure
+        proposal = {
+            "total_cost": final_cost,
+            "item_breakdown": item_breakdown,
+            "currency": location_context["currency"],
+            "negotiation_strategy": negotiation_strategy,
+            "cultural_approach": location_context["cultural_context"],
+            "payment_recommendations": self._get_payment_recommendations(influencer_profile.location),
+            "timeline_considerations": self._get_timeline_recommendations(influencer_profile.location),
+            "budget_analysis": {
+                "brand_budget": brand_budget,
+                "market_cost": total_market_cost,
+                "final_cost": final_cost,
+                "note": budget_note
+            }
+        }
+        
+        # Add special considerations for specific markets
+        if influencer_profile.location == LocationType.INDIA:
+            proposal["india_specific"] = {
+                "volume_discount_available": final_cost > 1000,
+                "suggested_bundle_approach": True,
+                "milestone_payment_preferred": True,
+                "portfolio_value_emphasis": True,
+                "relationship_building_priority": "high"
+            }
+        
+        return proposal
+    
+    def _get_payment_recommendations(self, location: LocationType) -> List[str]:
+        """Get location-specific payment recommendations."""
+        payment_recs = {
+            LocationType.INDIA: [
+                "50% advance, 50% on completion",
+                "Milestone-based payments preferred",
+                "UPI/bank transfer commonly used",
+                "Consider early payment discount (2-3%)"
+            ],
+            LocationType.US: [
+                "Standard NET-30 terms acceptable",
+                "Wire transfer or ACH preferred",
+                "50/50 split common for new relationships"
+            ],
+            LocationType.BRAZIL: [
+                "Payment in USD preferred",
+                "50% advance due to currency fluctuation",
+                "Local bank transfer available"
+            ]
+        }
+        return payment_recs.get(location, ["50% advance, 50% on completion"])
+    
+    def _get_timeline_recommendations(self, location: LocationType) -> List[str]:
+        """Get location-specific timeline recommendations."""
+        timeline_recs = {
+            LocationType.INDIA: [
+                "Allow 2-3 extra days for content creation",
+                "Festival seasons may affect timeline",
+                "Weekend work flexibility often available"
+            ],
+            LocationType.US: [
+                "Standard business timelines expected",
+                "Holiday seasons may impact delivery",
+                "Rush jobs typically cost 25-50% extra"
+            ],
+            LocationType.BRAZIL: [
+                "Carnival season affects February timeline",
+                "Flexible timing for creative process",
+                "Weekend work common"
+            ]
+        }
+        return timeline_recs.get(location, ["Standard timeline expectations"])

@@ -1,27 +1,24 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional
 from app.agents.negotiation_agent import AdvancedNegotiationAgent
 from app.models.negotiation_models import (
     BrandDetails, InfluencerProfile, PlatformType, LocationType
 )
-from app.services.pricing_service import PricingService
 
 router = APIRouter()
 negotiation_agent = AdvancedNegotiationAgent()
-pricing_service = PricingService()
 
 # Simple pydantic models for FastAPI request validation
 class BrandDetailsRequest(BaseModel):
     name: str
-    budget: Union[str, float]  # Accept both string (₹7,500) and float (7500)
+    budget: float
     goals: List[str]
     target_platforms: List[str]
     content_requirements: Dict[str, int]
     campaign_duration_days: int = 30
     target_audience: Optional[str] = None
     brand_guidelines: Optional[str] = None
-    brand_location: Optional[str] = None  # Brand's country for currency handling
 
 class InfluencerProfileRequest(BaseModel):
     name: str
@@ -44,64 +41,23 @@ class ContinueConversationRequest(BaseModel):
 async def start_negotiation(request: StartNegotiationRequest):
     """Start a new negotiation session."""
     try:
-        # Helper function to map location strings to LocationType
-        def map_location(location_str: str) -> LocationType:
-            location_mapping = {
-                "india": LocationType.INDIA,
-                "us": LocationType.US,
-                "usa": LocationType.US,
-                "united states": LocationType.US,
-                "uk": LocationType.UK,
-                "united kingdom": LocationType.UK,
-                "canada": LocationType.CANADA,
-                "australia": LocationType.AUSTRALIA,
-                "germany": LocationType.GERMANY,
-                "france": LocationType.FRANCE,
-                "brazil": LocationType.BRAZIL,
-                "japan": LocationType.JAPAN,
-            }
-            
-            normalized = location_str.lower().strip()
-            return location_mapping.get(normalized, LocationType.OTHER)
-        
         # Convert pydantic models to domain dataclasses
-        # Parse budget with currency conversion
-        budget_usd, original_currency = pricing_service.parse_budget_amount(request.brand_details.budget)
-        
-        # Determine brand location from input or budget currency
-        brand_location = LocationType.OTHER  # Default
-        if request.brand_details.brand_location:
-            brand_location = map_location(request.brand_details.brand_location)
-        elif original_currency != "USD":
-            # Infer brand location from currency if not provided
-            currency_to_location = {
-                "INR": LocationType.INDIA,
-                "EUR": LocationType.GERMANY,  # Default to Germany for EUR
-                "GBP": LocationType.UK,
-                "CAD": LocationType.CANADA,
-                "AUD": LocationType.AUSTRALIA,
-                "BRL": LocationType.BRAZIL,
-                "JPY": LocationType.JAPAN
-            }
-            brand_location = currency_to_location.get(original_currency, LocationType.OTHER)
-        
         brand_details = BrandDetails(
             name=request.brand_details.name,
-            budget=budget_usd,  # Now in USD
+            budget=request.brand_details.budget,
             goals=request.brand_details.goals,
             target_platforms=[PlatformType(p.lower()) for p in request.brand_details.target_platforms],
             content_requirements=request.brand_details.content_requirements,
             campaign_duration_days=request.brand_details.campaign_duration_days,
             target_audience=request.brand_details.target_audience,
-            brand_guidelines=request.brand_details.brand_guidelines,
-            brand_location=brand_location
+            brand_guidelines=request.brand_details.brand_guidelines
         )
         
         influencer_profile = InfluencerProfile(
             name=request.influencer_profile.name,
             followers=request.influencer_profile.followers,
             engagement_rate=request.influencer_profile.engagement_rate,
-            location=map_location(request.influencer_profile.location),
+            location=LocationType(request.influencer_profile.location.upper()),
             platforms=[PlatformType(p.lower()) for p in request.influencer_profile.platforms],
             niches=request.influencer_profile.niches,
             previous_brand_collaborations=request.influencer_profile.previous_brand_collaborations

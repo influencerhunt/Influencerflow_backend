@@ -5,7 +5,7 @@ from datetime import datetime
 from app.models.negotiation_models import (
     NegotiationState, BrandDetails, InfluencerProfile, 
     NegotiationOffer, ContentDeliverable, NegotiationStatus,
-    PlatformType, ContentType
+    PlatformType, ContentType, LocationType
 )
 from app.services.pricing_service import PricingService
 import logging
@@ -25,7 +25,7 @@ class ConversationHandler:
 We've reviewed your profile and believe you'd be a great fit for our upcoming campaign. Here's what we're looking for:
 
 🎯 **Campaign Goals**: {goals}
-💰 **Our Budget**: ${budget:,.2f}
+💰 **Our Budget**: {budget}
 📱 **Target Platforms**: {platforms}
 📋 **Content Requirements**: {content_summary}
 ⏰ **Campaign Duration**: {duration} days
@@ -45,7 +45,7 @@ Are you interested in learning more about this opportunity?""",
 💹 **Our Proposed Rates** (based on market research):
 {rate_breakdown}
 
-**Our Total Offer**: ${total_value:,.2f}
+**Our Total Offer**: {total_value}
 
 This offer reflects our research into fair market pricing while aligning with our campaign budget. We believe this compensation recognizes your value while allowing us to achieve our marketing objectives.
 
@@ -56,7 +56,7 @@ What are your thoughts on this proposal?""",
 📋 **Deliverables & Compensation**:
 {deliverables_breakdown}
 
-💰 **Total Compensation**: ${total_price:,.2f}
+💰 **Total Compensation**: {total_price}
 💳 **Payment Terms**: {payment_terms}
 🔄 **Revisions**: {revisions} included per deliverable
 📅 **Timeline**: {duration} days
@@ -68,9 +68,9 @@ Would you like to move forward with these terms, or are there specific aspects y
 
             "counter_offer_response": """Thank you for your counter-proposal. Let me review this with our team's perspective:
 
-**Your Request**: ${counter_price:,.2f}
-**Our Budget**: ${our_price:,.2f}
-**Gap**: ${difference:,.2f}
+**Your Request**: {counter_price}
+**Our Budget**: {our_price}
+**Gap**: {difference}
 
 {analysis_response}
 
@@ -129,6 +129,16 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         brand = session.brand_details
         influencer = session.influencer_profile
         
+        # Get brand's location context for currency formatting
+        # If brand location is not provided, use USD as default
+        brand_location = brand.brand_location if brand.brand_location else LocationType.OTHER
+        brand_location_context = self.pricing_service.get_location_context(brand_location)
+        brand_currency = brand_location_context["currency"]
+        
+        # Convert budget to brand's local currency for display
+        budget_local = self.pricing_service.convert_from_usd(brand.budget, brand_currency)
+        budget_formatted = self.pricing_service.format_currency(budget_local, brand_currency)
+        
         # Create content summary
         content_summary = []
         for content_type, quantity in brand.content_requirements.items():
@@ -137,7 +147,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         message = self.conversation_templates["greeting"].format(
             brand_name=brand.name,
             goals=", ".join(brand.goals),
-            budget=brand.budget,
+            budget=budget_formatted,
             platforms=", ".join([p.value.title() for p in brand.target_platforms]),
             content_summary=", ".join(content_summary),
             duration=brand.campaign_duration_days
@@ -147,7 +157,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         return message
 
     def generate_market_analysis(self, session_id: str) -> str:
-        """Generate market analysis message."""
+        """Generate market analysis message with location-aware pricing."""
         session = self.active_sessions.get(session_id)
         if not session:
             return "Session not found."
@@ -155,18 +165,38 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         influencer = session.influencer_profile
         brand = session.brand_details
         
-        # Calculate market rates
-        cost_breakdown = self.pricing_service.calculate_total_campaign_cost(
-            influencer, brand.content_requirements
+        # Generate location-specific proposal using enhanced pricing service
+        location_proposal = self.pricing_service.generate_location_specific_proposal(
+            influencer, brand.content_requirements, brand.budget
         )
         
-        # Format rate breakdown
+        # Get location context for cultural intelligence
+        location_context = self.pricing_service.get_location_context(influencer.location)
+        local_currency = location_context["currency"]
+        
+        # Format rate breakdown with local currency
         rate_breakdown_lines = []
-        for content_type, details in cost_breakdown["item_breakdown"].items():
+        for content_type, details in location_proposal["item_breakdown"].items():
             content_display = content_type.replace('_', ' ').title()
+            
+            # Convert amounts to local currency for display
+            unit_rate_local = self.pricing_service.convert_from_usd(details['unit_rate'], local_currency)
+            total_local = self.pricing_service.convert_from_usd(details['total'], local_currency)
+            
             rate_breakdown_lines.append(
-                f"• {content_display}: ${details['unit_rate']:.2f} × {details['quantity']} = ${details['total']:.2f}"
+                f"• {content_display}: {self.pricing_service.format_currency(unit_rate_local, local_currency)} × {details['quantity']} = {self.pricing_service.format_currency(total_local, local_currency)}"
             )
+        
+        # Add cultural context information
+        cultural_note = ""
+        if influencer.location.value.lower() == "india":
+            cultural_note = f"\n\n🌍 **Market Context**: We understand the Indian creator market and have tailored our rates accordingly. Our pricing reflects the volume-oriented approach and relationship-building focus that works well in this market."
+        elif location_context["market_maturity"] == "emerging":
+            cultural_note = f"\n\n🌍 **Market Context**: We've adjusted our proposal to reflect the local market dynamics in {influencer.location.value}."
+        
+        # Convert total to local currency for display
+        total_value_local = self.pricing_service.convert_from_usd(location_proposal["total_cost"], local_currency)
+        total_value_formatted = self.pricing_service.format_currency(total_value_local, local_currency)
         
         message = self.conversation_templates["market_analysis"].format(
             followers=influencer.followers,
@@ -174,14 +204,14 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
             location=influencer.location.value,
             platforms=", ".join([p.value.title() for p in influencer.platforms]),
             rate_breakdown="\n".join(rate_breakdown_lines),
-            total_value=cost_breakdown["total_cost"]
-        )
+            total_value=total_value_formatted
+        ) + cultural_note
         
         self._add_to_conversation(session_id, "assistant", message)
         return message
 
     def generate_proposal(self, session_id: str) -> str:
-        """Generate formal proposal message."""
+        """Generate formal proposal message with location-aware pricing."""
         session = self.active_sessions.get(session_id)
         if not session:
             return "Session not found."
@@ -189,14 +219,18 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         influencer = session.influencer_profile
         brand = session.brand_details
         
-        # Calculate pricing
-        cost_breakdown = self.pricing_service.calculate_total_campaign_cost(
-            influencer, brand.content_requirements
+        # Generate location-specific proposal using enhanced pricing service
+        location_proposal = self.pricing_service.generate_location_specific_proposal(
+            influencer, brand.content_requirements, brand.budget
         )
         
-        # Create deliverables
+        # Get location context for currency formatting
+        location_context = self.pricing_service.get_location_context(influencer.location)
+        local_currency = location_context["currency"]
+        
+        # Create deliverables using location-aware pricing
         deliverables = []
-        for content_type, details in cost_breakdown["item_breakdown"].items():
+        for content_type, details in location_proposal["item_breakdown"].items():
             # Parse platform and content type
             parts = content_type.split('_', 1)
             if len(parts) == 2:
@@ -216,12 +250,15 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
                 except ValueError:
                     continue
         
-        # Create offer
+        # Get location-specific payment terms
+        payment_terms = location_proposal["payment_recommendations"][0] if location_proposal["payment_recommendations"] else "50% upfront, 50% on completion"
+        
+        # Create offer with location intelligence
         offer = NegotiationOffer(
-            total_price=cost_breakdown["total_cost"],
+            total_price=location_proposal["total_cost"],
             deliverables=deliverables,
             campaign_duration_days=brand.campaign_duration_days,
-            payment_terms="50% upfront, 50% on completion",
+            payment_terms=payment_terms,
             revisions_included=2,
             usage_rights="6 months social media usage"
         )
@@ -229,24 +266,47 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         session.current_offer = offer
         session.status = NegotiationStatus.IN_PROGRESS
         
-        # Format deliverables breakdown
+        # Format deliverables breakdown with local currency
         deliverables_lines = []
         for deliverable in deliverables:
             platform_name = deliverable.platform.value.title()
             content_name = deliverable.content_type.value.replace('_', ' ').title()
+            
+            # Convert price to local currency for display
+            price_local = self.pricing_service.convert_from_usd(deliverable.proposed_price, local_currency)
+            price_formatted = self.pricing_service.format_currency(price_local, local_currency)
+            
             deliverables_lines.append(
-                f"• {platform_name} {content_name} × {deliverable.quantity}: ${deliverable.proposed_price:.2f}"
+                f"• {platform_name} {content_name} × {deliverable.quantity}: {price_formatted}"
             )
+        
+        # Add location-specific considerations
+        location_note = ""
+        if "india_specific" in location_proposal:
+            india_info = location_proposal["india_specific"]
+            if india_info["volume_discount_available"]:
+                location_note += "\n\n💡 **Volume Bonus**: Since this is a substantial campaign, we're including our volume partnership rate."
+            if india_info["portfolio_value_emphasis"]:
+                location_note += "\n🎯 **Portfolio Value**: This collaboration will be a valuable addition to your brand partnership portfolio."
+        
+        # Add timeline considerations
+        if location_proposal["timeline_considerations"]:
+            timeline_note = f"\n⏰ **Timeline Note**: {location_proposal['timeline_considerations'][0]}"
+            location_note += timeline_note
+        
+        # Convert total price to local currency for display
+        total_price_local = self.pricing_service.convert_from_usd(offer.total_price, local_currency)
+        total_price_formatted = self.pricing_service.format_currency(total_price_local, local_currency)
         
         message = self.conversation_templates["proposal"].format(
             deliverables_breakdown="\n".join(deliverables_lines),
-            total_price=offer.total_price,
+            total_price=total_price_formatted,
             payment_terms=offer.payment_terms,
             revisions=offer.revisions_included,
             duration=offer.campaign_duration_days,
             usage_rights=offer.usage_rights,
             brand_name=brand.name
-        )
+        ) + location_note
         
         self._add_to_conversation(session_id, "assistant", message)
         return message
@@ -283,18 +343,31 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         session.status = NegotiationStatus.AGREED
         session.agreed_terms = session.current_offer
         
-        # Format final terms
+        # Get location context for currency formatting
+        location_context = self.pricing_service.get_location_context(session.influencer_profile.location)
+        local_currency = location_context["currency"]
+        
+        # Format final terms with local currency
         final_terms_lines = []
         if session.current_offer:
             for deliverable in session.current_offer.deliverables:
                 platform_name = deliverable.platform.value.title()
                 content_name = deliverable.content_type.value.replace('_', ' ').title()
+                
+                # Convert price to local currency for display
+                price_local = self.pricing_service.convert_from_usd(deliverable.proposed_price, local_currency)
+                price_formatted = self.pricing_service.format_currency(price_local, local_currency)
+                
                 final_terms_lines.append(
-                    f"• {platform_name} {content_name} × {deliverable.quantity}: ${deliverable.proposed_price:.2f}"
+                    f"• {platform_name} {content_name} × {deliverable.quantity}: {price_formatted}"
                 )
             
+            # Convert total to local currency
+            total_local = self.pricing_service.convert_from_usd(session.current_offer.total_price, local_currency)
+            total_formatted = self.pricing_service.format_currency(total_local, local_currency)
+            
             final_terms_lines.extend([
-                f"• Total Investment: ${session.current_offer.total_price:.2f}",
+                f"• Total Investment: {total_formatted}",
                 f"• Payment Terms: {session.current_offer.payment_terms}",
                 f"• Campaign Duration: {session.current_offer.campaign_duration_days} days",
                 f"• Usage Rights: {session.current_offer.usage_rights}"
@@ -321,43 +394,123 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         return message
 
     def _handle_counter_offer(self, session_id: str, user_input: str) -> str:
-        """Handle counter offer from user."""
+        """Handle counter offer from user with location-aware strategy."""
         session = self.active_sessions[session_id]
         session.status = NegotiationStatus.COUNTER_OFFER
         session.negotiation_round += 1
         
-        # Try to extract price from user input
+        # Get location context for currency formatting
+        location_context = self.pricing_service.get_location_context(session.influencer_profile.location)
+        local_currency = location_context["currency"]
+        
+        # Get location-specific negotiation strategy
+        negotiation_strategy = self.pricing_service.get_negotiation_strategy(session.influencer_profile)
+        
+        # Try to extract price from user input (handles multiple currency symbols)
         import re
-        price_match = re.search(r'\$?(\d+(?:,\d{3})*(?:\.\d{2})?)', user_input.replace(',', ''))
-        counter_price = float(price_match.group(1)) if price_match else None
+        price_match = re.search(r'[₹$€£¥]?(\d+(?:,\d{3})*(?:\.\d{2})?)', user_input.replace(',', ''))
+        counter_price_input = float(price_match.group(1)) if price_match else None
         
-        our_price = session.current_offer.total_price if session.current_offer else 0
+        # Convert counter price to USD for comparison (assume it's in local currency)
+        counter_price_usd = self.pricing_service.convert_to_usd(counter_price_input, local_currency) if counter_price_input else None
         
-        if counter_price:
-            difference = abs(counter_price - our_price)
+        our_price_usd = session.current_offer.total_price if session.current_offer else 0
+        
+        # CRITICAL: Get the brand's original budget constraint from session
+        brand_budget_usd = session.brand_details.budget  # This is already in USD
+        
+        if counter_price_usd:
+            difference_usd = abs(counter_price_usd - our_price_usd)
             
-            if counter_price < our_price * 0.7:  # More than 30% below our offer
-                analysis_response = "I understand you're looking for a more budget-friendly option. However, this price point is significantly below market rates for your audience quality and the deliverables requested."
-                compromise_suggestion = f"Would you be open to a middle ground around ${(our_price + counter_price) / 2:.2f}? We could also adjust the deliverables to better fit your preferred budget."
+            # Convert values to local currency for display
+            counter_price_local = self.pricing_service.convert_from_usd(counter_price_usd, local_currency)
+            our_price_local = self.pricing_service.convert_from_usd(our_price_usd, local_currency)
+            difference_local = self.pricing_service.convert_from_usd(difference_usd, local_currency)
             
-            elif counter_price > our_price * 1.3:  # More than 30% above our offer
-                analysis_response = "I appreciate you valuing your content highly! However, this pricing exceeds the brand's allocated budget for this campaign."
-                compromise_suggestion = f"Could we explore a structure around ${min(counter_price, our_price * 1.15):.2f} with some additional value-adds like extended usage rights or bonus content?"
+            # CRITICAL: Never exceed the brand's budget constraint
+            max_allowable_usd = brand_budget_usd  # Brand's hard budget limit
+            max_allowable_local = self.pricing_service.convert_from_usd(max_allowable_usd, local_currency)
             
-            else:  # Within reasonable range
-                analysis_response = "That's definitely within a reasonable negotiation range. I can see how we might work with this."
-                compromise_suggestion = f"How about we meet at ${(our_price + counter_price) / 2:.2f}? This feels like a fair middle ground that respects both your expertise and the brand's budget."
+            # Apply location-specific negotiation approach WITH budget constraints
+            if session.influencer_profile.location.value.lower() == "india":
+                # Indian market approach - more collaborative and relationship-focused
+                if counter_price_usd > max_allowable_usd:
+                    analysis_response = f"I really appreciate your expertise and value! However, our campaign budget has a hard limit of {self.pricing_service.format_currency(max_allowable_local, local_currency)}. We'd love to find a creative way to work within this constraint."
+                    compromise_suggestion = f"Could we structure this at {self.pricing_service.format_currency(max_allowable_local, local_currency)} with added benefits like portfolio showcase opportunities, long-term partnership rates, or performance bonuses that don't impact the base budget?"
+                elif counter_price_usd < our_price_usd * 0.7:
+                    analysis_response = "I appreciate you sharing your budget expectations with us. We understand that pricing negotiations are an important part of building a strong partnership in the Indian market."
+                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
+                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
+                    compromise_suggestion = f"Let's work together to find a solution. How about {self.pricing_service.format_currency(mid_price_local, local_currency)}? We could also structure this as a volume deal with potential for future collaborations at even better rates."
+                else:
+                    analysis_response = "That's a very reasonable request! We appreciate your professional approach to this discussion."
+                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
+                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
+                    compromise_suggestion = f"I think we can make {self.pricing_service.format_currency(mid_price_local, local_currency)} work. This demonstrates our commitment to building a long-term partnership with you."
+            
+            elif negotiation_strategy["cultural_context"] == "direct":
+                # US/Western direct approach
+                if counter_price_usd > max_allowable_usd:
+                    analysis_response = f"Your rate is higher than our allocated campaign budget of {self.pricing_service.format_currency(max_allowable_local, local_currency)}. We need to stay within budget constraints."
+                    compromise_suggestion = f"Our maximum flexibility is {self.pricing_service.format_currency(max_allowable_local, local_currency)}. Can we add value through extended usage rights or performance incentives instead?"
+                elif counter_price_usd < our_price_usd * 0.7:
+                    analysis_response = "This price point is below market rate for the scope and your audience quality. Our budget analysis shows this would compromise the campaign value."
+                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
+                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
+                    compromise_suggestion = f"We can consider {self.pricing_service.format_currency(mid_price_local, local_currency)} if we adjust the deliverables or add performance bonuses."
+                else:
+                    analysis_response = "That's within our negotiation range. We can work with this."
+                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
+                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
+                    compromise_suggestion = f"Let's settle on {self.pricing_service.format_currency(mid_price_local, local_currency)}. This feels fair for both parties."
+            
+            elif negotiation_strategy["cultural_context"] in ["warm_relationship", "relationship_respect"]:
+                # Relationship-focused markets (Brazil, etc.)
+                if counter_price_usd > max_allowable_usd:
+                    analysis_response = f"We appreciate you valuing the partnership highly! Our budget allows up to {self.pricing_service.format_currency(max_allowable_local, local_currency)}. Let's find a creative solution within this range."
+                    compromise_suggestion = f"How about {self.pricing_service.format_currency(max_allowable_local, local_currency)} with relationship-building elements like co-marketing opportunities or exclusive partnership status?"
+                elif counter_price_usd < our_price_usd * 0.7:
+                    analysis_response = "We understand budget considerations and want to make this work for you. Building a great relationship is our priority."
+                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
+                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
+                    compromise_suggestion = f"What if we start with {self.pricing_service.format_currency(mid_price_local, local_currency)} for this campaign and explore better rates for future collaborations as our partnership grows?"
+                else:
+                    analysis_response = "Perfect! We love working with creators who value mutual success."
+                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
+                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
+                    compromise_suggestion = f"{self.pricing_service.format_currency(mid_price_local, local_currency)} sounds like a great foundation for our partnership."
+            
+            else:
+                # Default approach with budget constraints
+                if counter_price_usd > max_allowable_usd:
+                    analysis_response = f"This exceeds our campaign budget allocation of {self.pricing_service.format_currency(max_allowable_local, local_currency)}."
+                    compromise_suggestion = f"Our flexibility extends to {self.pricing_service.format_currency(max_allowable_local, local_currency)}. Can we find additional value to justify this investment?"
+                elif counter_price_usd < our_price_usd * 0.7:
+                    analysis_response = "This is significantly below market rates for the deliverables requested."
+                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
+                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
+                    compromise_suggestion = f"Would {self.pricing_service.format_currency(mid_price_local, local_currency)} work? We could also adjust the scope to fit your preferred budget."
+                else:
+                    analysis_response = "That's a reasonable request within our negotiation range."
+                    mid_price_usd = min((our_price_usd + counter_price_usd) / 2, max_allowable_usd)
+                    mid_price_local = self.pricing_service.convert_from_usd(mid_price_usd, local_currency)
+                    compromise_suggestion = f"How about we meet at {self.pricing_service.format_currency(mid_price_local, local_currency)}?"
         
         else:
             analysis_response = "I'd love to work with your pricing preferences."
-            compromise_suggestion = "Could you share your preferred rate structure? I'm confident we can find a solution that works for everyone."
-            counter_price = our_price
-            difference = 0
+            compromise_suggestion = "Could you share your preferred rate structure? I'm confident we can find a solution that works for everyone within our budget constraints."
+            counter_price_local = our_price_local
+            difference_local = 0
+        
+        # Format currency values for display
+        counter_price_formatted = self.pricing_service.format_currency(counter_price_local, local_currency)
+        our_price_formatted = self.pricing_service.format_currency(our_price_local, local_currency)
+        difference_formatted = self.pricing_service.format_currency(difference_local, local_currency)
         
         message = self.conversation_templates["counter_offer_response"].format(
-            counter_price=counter_price,
-            our_price=our_price,
-            difference=difference,
+            counter_price=counter_price_formatted,
+            our_price=our_price_formatted,
+            difference=difference_formatted,
             analysis_response=analysis_response,
             compromise_suggestion=compromise_suggestion
         )

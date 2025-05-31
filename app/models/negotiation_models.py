@@ -72,6 +72,7 @@ class BrandDetails:
     campaign_duration_days: int = 30  # Campaign duration in days
     target_audience: Optional[str] = None  # Target audience description
     brand_guidelines: Optional[str] = None  # Brand guidelines or requirements
+    brand_location: Optional[LocationType] = None  # Brand's location for currency handling
     
 @dataclass
 class ContentDeliverable:
@@ -110,13 +111,20 @@ class NegotiationState:
     
 @dataclass
 class MarketRateData:
-    """Market rate calculation data"""
-    platform: PlatformType
-    content_type: ContentType
-    base_rate_per_1k_followers: float
-    engagement_multiplier: float
-    location_multiplier: float
-    final_rate: float
+    """Market rate calculation data with location intelligence"""
+    base_rate: float = 0.0
+    engagement_bonus: float = 0.0
+    follower_bonus: float = 0.0
+    location_multiplier: float = 1.0
+    final_rate: float = 0.0
+    currency: str = "USD"
+    market_insights: Optional[Dict[str, str]] = field(default_factory=dict)
+    
+    # Legacy fields for backward compatibility
+    platform: Optional[PlatformType] = None
+    content_type: Optional[ContentType] = None
+    base_rate_per_1k_followers: float = 0.0
+    engagement_multiplier: float = 1.0
     
 @dataclass
 class PlatformConfig:
