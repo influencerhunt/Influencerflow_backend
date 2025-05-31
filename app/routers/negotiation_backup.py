@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from app.agents.negotiation_agent import AdvancedNegotiationAgent
+from app.agents import AdvancedNegotiationAgent
 from app.models.negotiation_models import (
     BrandDetails, InfluencerProfile, PlatformType, LocationType
 )
