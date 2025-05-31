@@ -13,6 +13,14 @@ class Settings(BaseSettings):
     database_url: str
     cors_origins: str = "http://localhost:3000"
     
+    # Twilio Configuration
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_number: str = ""
+    
+    # Google GenAI Configuration
+    google_api_key: str = ""
+    
     class Config:
         env_file = ".env"
     

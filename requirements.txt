@@ -1,5 +1,8 @@
 fastapi
 uvicorn[standard]
-supabase
 python-multipart
 python-decouple
+# Optional dependencies for full functionality
+# supabase
+# twilio
+# google-generativeai
