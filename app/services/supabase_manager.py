@@ -119,6 +119,36 @@ class SupabaseManager:
             logger.error(f"Failed to log conversation message: {e}")
             raise
 
+    async def get_conversation_messages(
+        self,
+        session_id: str,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """Get conversation messages for a specific session"""
+        try:
+            # Get messages from conversation_messages table
+            filters={}
+            # filters["limit"] = limit
+            # filters["offset"] = offset
+            filters["session_id"] = session_id
+            # filters["order_by"] = "timestamp.asc"  
+            result = await self.supabase_service.fetch_data(
+                "conversation_messages",
+                # {"session_id": session_id},
+                filters
+                # order_by="timestamp",
+                # limit=limit,
+                # offset=offset
+            )
+            
+            logger.info(f"Retrieved {len(result)} messages for session {session_id}")
+            return result if result else []
+            
+        except Exception as e:
+            logger.error(f"Failed to get conversation messages for session {session_id}: {e}")
+            return []
+
     # ==================== USER MANAGEMENT ====================
     
     async def create_anonymous_user(self, email: Optional[str] = None) -> str:
@@ -293,7 +323,7 @@ class SupabaseManager:
             result = await self.supabase_service.fetch_data(
                 "negotiation_sessions",
                 {"brand_id": brand_id},
-                limit=limit
+                # limit=limit
             )
             
             return result if result else []
@@ -307,8 +337,8 @@ class SupabaseManager:
         try:
             result = await self.supabase_service.fetch_data(
                 "negotiation_sessions",
-                {"inf_id": inf_id},
-                limit=limit
+                {"inf_id": inf_id}
+                # limit=limit
             )
             
             return result if result else []

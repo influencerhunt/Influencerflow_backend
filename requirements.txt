@@ -10,8 +10,9 @@ requests
 beautifulsoup4
 asyncio
 pymongo
-serper-api
+# serper-api
 python-dotenv
+reportlab
 
 langchain-community
 pydantic

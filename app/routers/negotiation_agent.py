@@ -348,6 +348,62 @@ async def get_negotiation_summary(session_id: str):
         logger.error(f"Failed to get negotiation summary: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get summary: {str(e)}")
 
+@router.get("/session/{session_id}/chat")
+async def get_session_chat(session_id: str, limit: int = 100, offset: int = 0):
+    """Get chat messages for a specific negotiation session"""
+    try:
+        if not session_id:
+            raise ValueError("session_id is required")
+        
+        # Validate session exists
+        session_data = await supabase_manager.get_negotiation_session(session_id)
+        print(session_data)
+        if not session_data:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Get chat messages from Supabase
+        messages = await supabase_manager.get_conversation_messages(session_id, limit, offset)
+        print(f"Retrieved {len(messages)} messages for session {session_id} with limit {limit} and offset {offset}")
+        # Format messages for response
+        formatted_messages = []
+        for message in messages:
+            formatted_messages.append({
+                "id": message.get("id"),
+                "session_id": message.get("session_id"),
+                "message_type": message.get("message_type"),  # "user" or "agent"
+                "content": message.get("content"),
+                "timestamp": message.get("created_at"),
+                "metadata": message.get("metadata", {})
+            })
+        
+        # Get session basic info
+        session_info = {
+            "brand_name": session_data.get("brand_details", {}).get("name", "Unknown"),
+            "influencer_name": session_data.get("influencer_profile", {}).get("name", "Unknown"),
+            "status": session_data.get("status", "unknown"),
+            "current_round": session_data.get("negotiation_round", 1)
+        }
+        
+        return {
+            "success": True,
+            "session_id": session_id,
+            "session_info": session_info,
+            "messages": formatted_messages,
+            "total_messages": len(formatted_messages),
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "has_more": len(formatted_messages) == limit
+            }
+        }
+        
+    except ValueError as e:
+        logger.error(f"Validation error in get session chat: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to get session chat: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get session chat: {str(e)}")
+
 # ==================== DELIVERABLES MANAGEMENT ====================
 
 @router.put("/session/{session_id}/deliverables")
@@ -768,11 +824,12 @@ async def archive_session(session_id: str):
 @router.get("/sessions/brand/{brand_id}")
 async def get_sessions_by_brand(brand_id: str, limit: int = 50):
     """Get all negotiation sessions for a specific brand"""
+    print(f"Fetching sessions for brand_id: {brand_id} with limit: {limit}")
     try:
         if not brand_id:
             raise ValueError("brand_id is required")
         
-        sessions = await supabase_manager.get_sessions_by_brand_id(brand_id, limit)
+        sessions = await supabase_manager.get_sessions_by_brand_id(brand_id)
         
         # Format sessions for response
         formatted_sessions = []
@@ -806,7 +863,7 @@ async def get_sessions_by_influencer(inf_id: str, limit: int = 50):
         if not inf_id:
             raise ValueError("inf_id is required")
         
-        sessions = await supabase_manager.get_sessions_by_inf_id(inf_id, limit)
+        sessions = await supabase_manager.get_sessions_by_inf_id(inf_id)
         
         # Format sessions for response
         formatted_sessions = []
