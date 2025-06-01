@@ -1,8 +1,8 @@
 fastapi
 uvicorn[standard]
-supabase
 python-multipart
 python-decouple
+
 google-generativeai
 langchain
 langchain-google-genai
@@ -12,3 +12,7 @@ asyncio
 pymongo
 serper-api
 python-dotenv
+
+langchain-community
+pydantic
+
