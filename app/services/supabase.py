@@ -179,4 +179,90 @@ class SupabaseService:
             logger.error(f"Supabase update user metadata error: {str(e)}")
             raise e
 
+    # ==================== DATABASE OPERATIONS ====================
+    
+    @classmethod
+    async def insert_data(cls, table: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Insert data into a table"""
+        try:
+            client = cls.get_admin_client()
+            response = client.table(table).insert(data).execute()
+            return response.data[0] if response.data else {}
+        except Exception as e:
+            logger.error(f"Supabase insert error on table {table}: {str(e)}")
+            raise e
+
+    @classmethod
+    async def fetch_data(cls, table: str, filters: Dict[str, Any] = None) -> list:
+        """Fetch data from a table with optional filters"""
+        try:
+            client = cls.get_admin_client()
+            query = client.table(table).select("*")
+            
+            if filters:
+                for key, value in filters.items():
+                    query = query.eq(key, value)
+            
+            response = query.execute()
+            return response.data
+        except Exception as e:
+            logger.error(f"Supabase fetch error on table {table}: {str(e)}")
+            raise e
+
+    @classmethod
+    async def update_data(cls, table: str, updates: Dict[str, Any], filters: Dict[str, Any]) -> Dict[str, Any]:
+        """Update data in a table"""
+        try:
+            client = cls.get_admin_client()
+            query = client.table(table).update(updates)
+            
+            for key, value in filters.items():
+                query = query.eq(key, value)
+            
+            response = query.execute()
+            return response.data[0] if response.data else {}
+        except Exception as e:
+            logger.error(f"Supabase update error on table {table}: {str(e)}")
+            raise e
+
+    @classmethod
+    async def delete_data(cls, table: str, filters: Dict[str, Any]) -> bool:
+        """Delete data from a table"""
+        try:
+            client = cls.get_admin_client()
+            query = client.table(table).delete()
+            
+            for key, value in filters.items():
+                query = query.eq(key, value)
+            
+            response = query.execute()
+            return True
+        except Exception as e:
+            logger.error(f"Supabase delete error on table {table}: {str(e)}")
+            raise e
+
+    @classmethod
+    async def upload_file(cls, bucket: str, file_path: str, file_data: bytes, content_type: str = None) -> str:
+        """Upload a file to Supabase storage"""
+        try:
+            client = cls.get_admin_client()
+            
+            # Upload file
+            response = client.storage.from_(bucket).upload(
+                file_path, 
+                file_data,
+                {"content-type": content_type} if content_type else {}
+            )
+            
+            if response.status_code == 200:
+                # Get public URL
+                public_url = client.storage.from_(bucket).get_public_url(file_path)
+                return public_url
+            else:
+                raise Exception(f"Upload failed with status: {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"Supabase file upload error: {str(e)}")
+            raise e
+
 supabase_service = SupabaseService() 

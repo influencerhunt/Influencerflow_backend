@@ -11,10 +11,6 @@ from dataclasses import dataclass, asdict
 import uuid
 
 from app.services.supabase import SupabaseService
-from app.models.negotiation_models import (
-    BrandDetails, InfluencerProfile, PlatformType, LocationType, 
-    NegotiationStatus, ContentType
-)
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +53,8 @@ class SupabaseManager:
         operation_type: str,
         user_input: Optional[str] = None,
         agent_response: Optional[str] = None,
-        brand_details: Optional[BrandDetails] = None,
-        influencer_profile: Optional[InfluencerProfile] = None,
+        brand_details: Optional[Dict] = None,
+        influencer_profile: Optional[Dict] = None,
         deliverables: Optional[List[Dict]] = None,
         budget_info: Optional[Dict] = None,
         contract_id: Optional[str] = None,
@@ -74,8 +70,8 @@ class SupabaseManager:
                 operation_type=operation_type,
                 user_input=user_input,
                 agent_response=agent_response,
-                brand_details=asdict(brand_details) if brand_details else None,
-                influencer_profile=asdict(influencer_profile) if influencer_profile else None,
+                brand_details=brand_details,
+                influencer_profile=influencer_profile,
                 deliverables=deliverables,
                 budget_info=budget_info,
                 contract_id=contract_id,
@@ -123,23 +119,78 @@ class SupabaseManager:
             logger.error(f"Failed to log conversation message: {e}")
             raise
 
+    # ==================== USER MANAGEMENT ====================
+    
+    async def create_anonymous_user(self, email: Optional[str] = None) -> str:
+        """Create an anonymous user record and return the user_id"""
+        try:
+            user_data = {
+                "id": str(uuid.uuid4()),
+                "email": email or f"anonymous_{uuid.uuid4().hex[:8]}@temp.com",
+                "is_anonymous": True,
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            
+            result = await self.supabase_service.insert_data("users", user_data)
+            user_id = result.get("id") or user_data["id"]
+            
+            logger.info(f"Created anonymous user: {user_id}")
+            return user_id
+            
+        except Exception as e:
+            logger.error(f"Failed to create anonymous user: {e}")
+            raise
+
+    async def get_or_create_user(self, user_id: Optional[str], email: Optional[str] = None) -> Optional[str]:
+        """Get existing user or create anonymous user if needed"""
+        if user_id:
+            # Check if user exists
+            existing_user = await self.supabase_service.fetch_data("users", {"id": user_id})
+            if existing_user:
+                return user_id
+        
+        # Create anonymous user if no valid user_id provided
+        if email or user_id:  # Only create if we have some identifier
+            return await self.create_anonymous_user(email)
+        
+        return None  # Allow truly anonymous sessions
+
     # ==================== SESSION MANAGEMENT ====================
     
-    async def create_negotiation_session(
+    async def create_negotiation_session_from_dicts(
         self,
         session_id: str,
-        brand_details: BrandDetails,
-        influencer_profile: InfluencerProfile,
+        brand_details: Dict[str, Any],
+        influencer_profile: Dict[str, Any],
         user_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Create a new negotiation session"""
+        """Create a new negotiation session from dictionary data"""
         try:
+            # Handle user_id - set to None if not provided or check if user exists
+            validated_user_id = None
+            if user_id is not None:
+                # Try to validate if it's a proper UUID format
+                try:
+                    uuid.UUID(user_id)
+                    # Check if user exists in users table
+                    existing_user = await self.supabase_service.fetch_data("users", {"id": user_id})
+                    if existing_user:
+                        validated_user_id = user_id
+                        logger.info(f"Using existing user: {user_id}")
+                    else:
+                        logger.warning(f"User {user_id} not found in users table, setting user_id to None")
+                        validated_user_id = None
+                except ValueError:
+                    logger.warning(f"Invalid UUID format for user_id: {user_id}, setting to None")
+                    validated_user_id = None
+            
             session_data = {
                 "id": str(uuid.uuid4()),
                 "session_id": session_id,
-                "user_id": user_id,
-                "brand_details": asdict(brand_details),
-                "influencer_profile": asdict(influencer_profile),
+                "user_id": validated_user_id,  # This can be None now
+                "brand_details": brand_details,
+                "influencer_profile": influencer_profile,
                 "status": "initiated",
                 "negotiation_round": 1,
                 "current_offer": None,
@@ -167,12 +218,36 @@ class SupabaseManager:
                 status="initiated"
             )
             
-            logger.info(f"Created negotiation session: {session_id}")
+            logger.info(f"Created negotiation session: {session_id} for user: {validated_user_id or 'anonymous'}")
             return session_data
             
         except Exception as e:
             logger.error(f"Failed to create negotiation session: {e}")
             raise
+
+    # Keep the original method for backward compatibility
+    async def create_negotiation_session(
+        self,
+        session_id: str,
+        brand_details: Any,  # Could be model or dict
+        influencer_profile: Any,  # Could be model or dict
+        user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Create a new negotiation session (backward compatible)"""
+        # Convert to dictionaries if they're not already
+        if hasattr(brand_details, '__dict__'):
+            brand_dict = asdict(brand_details) if hasattr(brand_details, '__dataclass_fields__') else brand_details.__dict__
+        else:
+            brand_dict = brand_details
+            
+        if hasattr(influencer_profile, '__dict__'):
+            influencer_dict = asdict(influencer_profile) if hasattr(influencer_profile, '__dataclass_fields__') else influencer_profile.__dict__
+        else:
+            influencer_dict = influencer_profile
+            
+        return await self.create_negotiation_session_from_dicts(
+            session_id, brand_dict, influencer_dict, user_id
+        )
 
     async def update_negotiation_session(
         self,
@@ -550,22 +625,30 @@ def log_to_supabase(operation_name: str, operation_type: str):
     """Decorator to automatically log operations to Supabase"""
     def decorator(func):
         async def wrapper(*args, **kwargs):
-            # Extract session_id from function arguments
+            # Extract session_id from function arguments more robustly
             session_id = None
             
             # Try to find session_id in various locations
             if 'session_id' in kwargs:
                 session_id = kwargs['session_id']
-            elif len(args) > 0:
-                # Check if first argument has session_id attribute (request object)
+            elif len(args) > 1:
+                # For router functions, args[0] is usually 'self' or the first parameter
+                # args[1] might be session_id or request object
+                if isinstance(args[1], str):
+                    session_id = args[1]
+                elif isinstance(args[1], dict) and 'session_id' in args[1]:
+                    session_id = args[1]['session_id']
+            
+            # For functions that take a request dict as first parameter after session_id
+            if not session_id and len(args) > 0:
                 first_arg = args[0]
-                if hasattr(first_arg, 'session_id'):
-                    session_id = first_arg.session_id
-                # Check if it's a direct session_id string
+                if isinstance(first_arg, dict):
+                    # Extract from request dict
+                    if 'session_id' in first_arg:
+                        session_id = first_arg['session_id']
                 elif isinstance(first_arg, str):
+                    # Direct session_id
                     session_id = first_arg
-            elif len(args) > 1 and isinstance(args[1], str):
-                session_id = args[1]
             
             # Execute the function
             try:

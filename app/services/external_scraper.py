@@ -28,6 +28,10 @@ class ExternalInfluencerScraper:
         """
         Search for influencers from external sources using web scraping and APIs
         """
+        # If no SERPER API key, return mock external influencers for MVP demo
+        if not self.serper_api_key:
+            return await self._generate_mock_external_influencers(filters, query, limit)
+        
         influencers = []
         
         try:
@@ -783,73 +787,6 @@ class ExternalInfluencerScraper:
         else:
             return random.randint(25000, 150000)     # 25K - 150K (general influencer)
 
-    def _estimate_engagement_rate(self, followers: int, platform: PlatformType) -> float:
-        """Estimate engagement rate based on follower count and platform"""
-        # Engagement rates generally decrease as follower count increases
-        
-        base_rates = {
-            PlatformType.INSTAGRAM: {
-                'micro': (0.03, 0.08),      # 3-8% for micro influencers
-                'mid': (0.02, 0.05),        # 2-5% for mid-tier
-                'macro': (0.01, 0.03),      # 1-3% for macro
-                'mega': (0.005, 0.02)       # 0.5-2% for mega
-            },
-            PlatformType.YOUTUBE: {
-                'micro': (0.02, 0.06),      # 2-6% for micro
-                'mid': (0.015, 0.04),       # 1.5-4% for mid-tier
-                'macro': (0.01, 0.025),     # 1-2.5% for macro
-                'mega': (0.005, 0.015)      # 0.5-1.5% for mega
-            },
-            PlatformType.TIKTOK: {
-                'micro': (0.05, 0.12),      # 5-12% for micro (TikTok has higher engagement)
-                'mid': (0.03, 0.08),        # 3-8% for mid-tier
-                'macro': (0.02, 0.05),      # 2-5% for macro
-                'mega': (0.01, 0.03)        # 1-3% for mega
-            }
-        }
-        
-        # Determine tier based on follower count
-        if followers < 100000:
-            tier = 'micro'
-        elif followers < 500000:
-            tier = 'mid'
-        elif followers < 1000000:
-            tier = 'macro'
-        else:
-            tier = 'mega'
-        
-        # Get rate range for platform and tier
-        platform_rates = base_rates.get(platform, base_rates[PlatformType.INSTAGRAM])
-        min_rate, max_rate = platform_rates.get(tier, (0.01, 0.03))
-        
-        # Generate random engagement rate within the range
-        engagement_rate = random.uniform(min_rate, max_rate)
-        return round(engagement_rate, 3)
-
-    def _is_likely_verified(self, title: str, snippet: str) -> bool:
-        """Determine if an influencer is likely verified based on content indicators"""
-        content = f"{title} {snippet}".lower()
-        
-        verification_indicators = [
-            'verified', 'official', 'celebrity', 'famous', 'star',
-            'founder', 'ceo', 'brand', 'company', 'million', 'grammy',
-            'oscar', 'emmy', 'athlete', 'actor', 'actress', 'singer',
-            'musician', 'model', 'tv show', 'movie'
-        ]
-        
-        # Count verification indicators
-        indicator_count = sum(1 for indicator in verification_indicators if indicator in content)
-        
-        # Higher chance of verification with more indicators
-        if indicator_count >= 3:
-            return random.choice([True, True, True, False])  # 75% chance
-        elif indicator_count >= 2:
-            return random.choice([True, True, False, False])  # 50% chance
-        elif indicator_count >= 1:
-            return random.choice([True, False, False, False])  # 25% chance
-        else:
-            return False
-
     def _estimate_price(self, followers: int, platform: PlatformType) -> int:
         """Estimate price per post based on followers and platform"""
         base_rates = {
@@ -866,6 +803,155 @@ class ExternalInfluencerScraper:
         
         # Add some bounds
         return max(50, min(estimated_price, 50000))
+
+    async def _generate_mock_external_influencers(self, filters: SearchFilters, query: str, limit: int) -> List[Influencer]:
+        """Generate mock external influencers for MVP demo when API keys are not available"""
+        import uuid
+        from datetime import datetime
+        
+        mock_influencers = [
+            {
+                "name": "Emma TechReview",
+                "username": "emmatechreview",
+                "platform": PlatformType.YOUTUBE,
+                "followers": 185000,
+                "engagement_rate": 4.8,
+                "price_per_post": 1300,
+                "location": "Austin, TX",
+                "niche": "tech",
+                "bio": "Tech product reviews and buying guides for everyday consumers",
+                "verified": True
+            },
+            {
+                "name": "CodeWithSarah",
+                "username": "codewithsarah",
+                "platform": PlatformType.YOUTUBE,
+                "followers": 95000,
+                "engagement_rate": 6.2,
+                "price_per_post": 800,
+                "location": "San Francisco, CA",
+                "niche": "tech",
+                "bio": "Software development tutorials and career advice",
+                "verified": False
+            },
+            {
+                "name": "TechTrends Daily",
+                "username": "techtrendsdaily",
+                "platform": PlatformType.INSTAGRAM,
+                "followers": 120000,
+                "engagement_rate": 5.5,
+                "price_per_post": 950,
+                "location": "New York, NY",
+                "niche": "tech",
+                "bio": "Daily tech news and gadget reviews",
+                "verified": True
+            },
+            {
+                "name": "Fashion Forward Maya",
+                "username": "fashionforwardmaya",
+                "platform": PlatformType.INSTAGRAM,
+                "followers": 78000,
+                "engagement_rate": 7.1,
+                "price_per_post": 650,
+                "location": "Los Angeles, CA",
+                "niche": "fashion",
+                "bio": "Sustainable fashion and style inspiration",
+                "verified": False
+            },
+            {
+                "name": "Minimal Style Co",
+                "username": "minimalstyleco",
+                "platform": PlatformType.INSTAGRAM,
+                "followers": 156000,
+                "engagement_rate": 4.3,
+                "price_per_post": 1100,
+                "location": "Chicago, IL",
+                "niche": "fashion",
+                "bio": "Minimalist fashion and lifestyle content",
+                "verified": True
+            },
+            {
+                "name": "Urban Eats",
+                "username": "urbaneats",
+                "platform": PlatformType.TIKTOK,
+                "followers": 210000,
+                "engagement_rate": 8.9,
+                "price_per_post": 1400,
+                "location": "Miami, FL",
+                "niche": "food",
+                "bio": "Street food discoveries and restaurant reviews",
+                "verified": True
+            }
+        ]
+        
+        # Filter based on criteria
+        filtered_influencers = []
+        query_lower = query.lower()
+        
+        for mock_data in mock_influencers:
+            # Simple keyword matching
+            if (query_lower in mock_data["niche"].lower() or 
+                query_lower in mock_data["bio"].lower() or
+                any(keyword in mock_data["niche"].lower() for keyword in query_lower.split())):
+                
+                # Apply filters
+                if filters:
+                    # Platform filter
+                    if filters.platform and mock_data["platform"] != filters.platform:
+                        continue
+                    
+                    # Location filter
+                    if filters.location and filters.location.lower() not in mock_data["location"].lower():
+                        continue
+                    
+                    # Niche filter
+                    if filters.niche and filters.niche.lower() not in mock_data["niche"].lower():
+                        continue
+                    
+                    # Follower filters
+                    if filters.followers_min and mock_data["followers"] < filters.followers_min:
+                        continue
+                    if filters.followers_max and mock_data["followers"] > filters.followers_max:
+                        continue
+                    
+                    # Price filters
+                    if filters.price_min and mock_data["price_per_post"] < filters.price_min:
+                        continue
+                    if filters.price_max and mock_data["price_per_post"] > filters.price_max:
+                        continue
+                    
+                    # Engagement filters
+                    if filters.engagement_min and mock_data["engagement_rate"] < filters.engagement_min:
+                        continue
+                    if filters.engagement_max and mock_data["engagement_rate"] > filters.engagement_max:
+                        continue
+                    
+                    # Verified filter
+                    if filters.verified_only and not mock_data["verified"]:
+                        continue
+                
+                # Create Influencer object
+                influencer = Influencer(
+                    id=str(uuid.uuid4()),
+                    name=mock_data["name"],
+                    username=mock_data["username"],
+                    platform=mock_data["platform"],
+                    followers=mock_data["followers"],
+                    engagement_rate=mock_data["engagement_rate"],
+                    price_per_post=mock_data["price_per_post"],
+                    location=mock_data["location"],
+                    niche=mock_data["niche"],
+                    bio=mock_data["bio"],
+                    verified=mock_data["verified"],
+                    source=InfluencerSource.EXTERNAL,
+                    profile_link=f"https://{mock_data['platform'].value}.com/{mock_data['username']}",
+                    avatar_url=None,
+                    created_at=datetime.now(),
+                    updated_at=datetime.now()
+                )
+                filtered_influencers.append(influencer)
+        
+        return filtered_influencers[:limit]
 
 # Create singleton instance
 external_scraper = ExternalInfluencerScraper()

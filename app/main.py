@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth import router as auth_router
+from app.api.search import router as search_router
 from app.routers.negotiation import router as negotiation_router
 from app.core.config import settings
 from app.services.monitoring.api import router as monitoring_router  # ✅ Added monitoring router
@@ -26,15 +27,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Try to include routers - handle missing dependencies gracefully
-try:
-    from app.api.auth import router as auth_router
-    app.include_router(auth_router, prefix="/api/v1/auth", tags=["authentication"])
-    app.include_router(negotiation_router, prefix="/api/v1/negotiation", tags=["negotiation"])
-    logger.info("Authentication routes loaded")
-except ImportError as e:
-    logger.warning(f"Authentication routes not available: {e}")
+# Include core routers
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["authentication"])
+app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+app.include_router(negotiation_router, prefix="/api/v1/negotiation", tags=["negotiation"])
+app.include_router(monitoring_router, prefix="/api/v1/monitor", tags=["campaign-monitoring"])
 
+# Try to include optional routers - handle missing dependencies gracefully
 try:
     from app.api.voice_call import router as voice_call_router
     app.include_router(voice_call_router, prefix="/api/v1/voice-call", tags=["voice-call"])
@@ -56,10 +55,6 @@ try:
 except ImportError as e:
     logger.warning(f"Contract routes not available: {e}")
 
-# Include routers
-app.include_router(auth_router, prefix="/api/v1/auth", tags=["authentication"])
-app.include_router(monitoring_router, prefix="/api/v1/monitor", tags=["campaign-monitoring"])  # ✅ Include monitoring
-
 @app.get("/")
 async def root():
     """Root endpoint"""
@@ -67,8 +62,8 @@ async def root():
         "message": "Welcome to InfluencerFlow API",
         "version": "1.0.0",
         "status": "active",
-        "features": ["basic-api", "voice-call-mock", "agent-service"],
-        "note": "Running in MVP mode - some features may be mocked"
+        "features": ["basic-api", "search", "negotiation", "contracts", "monitoring"],
+        "note": "MVP v1 ready - search, chat, negotiation, contracts, analytics"
     }
 
 @app.get("/health")
@@ -76,25 +71,30 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "mode": "mvp"}
 
-from googleapiclient.discovery import build
-from app.core.config import settings  # ensure your API key is loaded correctly
-
-def build_youtube_service():
-    return build("youtube", "v3", developerKey=settings.youtube_api_key)
-
-def get_uploads_playlist_id(channel_id: str) -> str:
-    youtube = build("youtube", "v3", developerKey=settings.youtube_api_key)
+# YouTube service functions - only load if dependencies are available
+try:
+    from googleapiclient.discovery import build
+    from app.core.config import settings
     
-    response = youtube.channels().list(
-        part="contentDetails",
-        id=channel_id
-    ).execute()
-    
-    try:
-        uploads_playlist_id = response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
-        return uploads_playlist_id
-    except (KeyError, IndexError):
-        raise ValueError("Could not retrieve uploads playlist ID")
+    def build_youtube_service():
+        return build("youtube", "v3", developerKey=settings.youtube_api_key)
+
+    def get_uploads_playlist_id(channel_id: str) -> str:
+        youtube = build("youtube", "v3", developerKey=settings.youtube_api_key)
+        
+        response = youtube.channels().list(
+            part="contentDetails",
+            id=channel_id
+        ).execute()
+        
+        try:
+            uploads_playlist_id = response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+            return uploads_playlist_id
+        except (KeyError, IndexError):
+            raise ValueError("Could not retrieve uploads playlist ID")
+            
+except ImportError as e:
+    logger.warning(f"YouTube service not available: {e}")
 
 
 if __name__ == "__main__":
