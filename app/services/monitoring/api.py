@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Request, HTTPException
 from app.services.monitoring.schemas import MetricsRequest, MetricsResponse, PostMetrics
 from app.services.monitoring.youtube_service import fetch_recent_youtube_videos
-from app.services.monitoring.youtube_service import fetch_channel_overview
+from app.services.monitoring.youtube_service import fetch_channel_overview,get_channel_id_by_username
 from fastapi import APIRouter
 from app.services.monitoring.youtube_service import (
-    get_uploads_playlist_id, 
+    get_uploads_playlist_id,
     build_youtube_service, 
     fetch_videos_from_playlist, 
     get_video_metrics_from_playlist, 
@@ -26,6 +26,10 @@ def get_engagement_rate(channel_id: str, duration: str = "30d"):
         return calculate_engagement_rate(channel_id, duration)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/youtube/channel-id")
+def get_channel_id(channel_name: str):
+    return get_channel_id_by_username(channel_name)
 
 # routes to fetch metrics: begin
 from app.services.monitoring.analytics import (
