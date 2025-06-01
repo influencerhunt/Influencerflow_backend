@@ -83,6 +83,13 @@ try:
 except ImportError as e:
     logger.warning(f"Monitoring routes not available: {e}")
 
+try:
+    from app.api.contracts import router as contracts_router
+    app.include_router(contracts_router, prefix="/api/v1", tags=["contracts"])
+    logger.info("Contract routes loaded")
+except ImportError as e:
+    logger.warning(f"Contract routes not available: {e}")
+
 
 @app.get("/")
 async def root():
@@ -126,7 +133,8 @@ except ImportError as e:
     logger.warning(f"YouTube service not available: {e}")
 
 
-if __name__ == "__main__":
+if __name__ 
+"__main__":
     import uvicorn
 
     uvicorn.run(

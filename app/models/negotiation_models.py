@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from datetime import datetime
 
 class PlatformType(str, Enum):
     INSTAGRAM = "instagram"
@@ -65,7 +66,7 @@ class InfluencerProfile:
 class BrandDetails:
     """Brand campaign details"""
     name: str
-    budget: float  # Total budget for the campaign (must be > 0)
+    budget: float  # Total budget for the campaign in USD (must be > 0)
     goals: List[str]  # Campaign goals
     target_platforms: List[PlatformType]  # Target platforms for the campaign
     content_requirements: Dict[str, int]  # Required content with quantities
@@ -73,6 +74,8 @@ class BrandDetails:
     target_audience: Optional[str] = None  # Target audience description
     brand_guidelines: Optional[str] = None  # Brand guidelines or requirements
     brand_location: Optional[LocationType] = None  # Brand's location for currency handling
+    budget_currency: Optional[str] = None  # Currency for the budget (e.g., "USD", "INR", "EUR")
+    original_budget_amount: Optional[float] = None  # Original budget amount in original currency
     
 @dataclass
 class ContentDeliverable:
@@ -89,12 +92,15 @@ class ContentDeliverable:
 class NegotiationOffer:
     """Complete negotiation offer"""
     total_price: float
-    deliverables: List[ContentDeliverable]
-    campaign_duration_days: int
     payment_terms: str = "50% upfront, 50% on completion"
     revisions_included: int = 2
-    exclusivity_period_days: Optional[int] = None
+    timeline_days: int = 30
     usage_rights: str = "6 months social media usage"
+    currency: Optional[str] = "USD"
+    content_breakdown: Optional[Dict[str, any]] = None
+    deliverables: Optional[List[ContentDeliverable]] = None
+    campaign_duration_days: Optional[int] = None
+    exclusivity_period_days: Optional[int] = None
     
 @dataclass
 class NegotiationState:
@@ -134,3 +140,53 @@ class PlatformConfig:
     base_rates: Dict[ContentType, float]
     engagement_weight: float = 1.0
     follower_weight: float = 1.0
+
+# Contract-related models for contract generation system
+
+class ContractStatus(str, Enum):
+    """Contract status enumeration"""
+    PENDING_SIGNATURES = "pending_signatures"
+    BRAND_SIGNED = "brand_signed"
+    INFLUENCER_SIGNED = "influencer_signed"
+    FULLY_EXECUTED = "fully_executed"
+    CANCELLED = "cancelled"
+
+@dataclass
+class DigitalSignature:
+    """Digital signature information"""
+    signer_name: str
+    signer_email: str
+    signature_timestamp: datetime
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+
+@dataclass
+class ContractTerms:
+    """Contract terms and legal information"""
+    contract_id: str
+    session_id: str
+    brand_name: str
+    influencer_name: str
+    campaign_title: str
+    deliverables: List[ContentDeliverable]
+    total_amount: float
+    currency: str = "USD"
+    campaign_start_date: datetime = field(default_factory=datetime.now)
+    campaign_end_date: datetime = field(default_factory=datetime.now)
+    contract_date: datetime = field(default_factory=datetime.now)
+    payment_terms: str = "50% upfront, 50% on completion"
+    usage_rights: str = "6 months social media usage"
+    exclusivity_period_days: Optional[int] = None
+    revisions_included: int = 2
+    status: ContractStatus = ContractStatus.PENDING_SIGNATURES
+    brand_signature: Optional[DigitalSignature] = None
+    influencer_signature: Optional[DigitalSignature] = None
+    brand_contact_email: Optional[str] = None
+    brand_contact_name: Optional[str] = None
+    influencer_email: Optional[str] = None
+    influencer_contact: Optional[str] = None
+    campaign_description: Optional[str] = None
+    cancellation_policy: Optional[str] = None
+    dispute_resolution: Optional[str] = None
+    governing_law: Optional[str] = None
+    legal_terms: Optional[str] = None
