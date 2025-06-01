@@ -48,19 +48,19 @@ try:
 except ImportError as e:
     logger.warning(f"Authentication routes not available: {e}")
 
-try:
-    from app.routers.negotiation import router as negotiation_router
-    app.include_router(negotiation_router, prefix="/api/v1/negotiation", tags=["negotiation"])
-    logger.info("Negotiation routes loaded")
-except ImportError as e:
-    logger.warning(f"Negotiation routes not available: {e}")
+# try:
+#     # from app.routers.negotiation import router as negotiation_router
+#     app.include_router(negotiation_router, prefix="/api/v1/negotiation", tags=["negotiation"])
+#     logger.info("Negotiation routes loaded")
+# except ImportError as e:
+#     logger.warning(f"Negotiation routes not available: {e}")
 
-try:
-    from app.routers.negotiation_fixed import router as negotiation_fixed_router
-    app.include_router(negotiation_fixed_router, prefix="/api/v1/negotiation-fixed", tags=["negotiation-fixed", "voice-call"])
-    logger.info("Negotiation fixed routes loaded")
-except ImportError as e:
-    logger.warning(f"Negotiation fixed routes not available: {e}")
+# try:
+#     from app.routers.negotiation_fixed import router as negotiation_fixed_router
+#     app.include_router(negotiation_fixed_router, prefix="/api/v1/negotiation-fixed", tags=["negotiation-fixed", "voice-call"])
+#     logger.info("Negotiation fixed routes loaded")
+# except ImportError as e:
+#     logger.warning(f"Negotiation fixed routes not available: {e}")
 
 try:
     from app.api.voice_call import router as voice_call_router
@@ -83,12 +83,12 @@ try:
 except ImportError as e:
     logger.warning(f"Monitoring routes not available: {e}")
 
-try:
-    from app.api.contracts import router as contracts_router
-    app.include_router(contracts_router, prefix="/api/v1", tags=["contracts"])
-    logger.info("Contract routes loaded")
-except ImportError as e:
-    logger.warning(f"Contract routes not available: {e}")
+# try:
+#     from app.api.contracts import router as contracts_router
+#     app.include_router(contracts_router, prefix="/api/v1", tags=["contracts"])
+#     logger.info("Contract routes loaded")
+# except ImportError as e:
+#     logger.warning(f"Contract routes not available: {e}")
 
 
 @app.get("/")
