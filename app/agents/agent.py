@@ -43,6 +43,7 @@ class BrandDetails:
     target_audience: str
     brand_guidelines: str
     brand_location: str
+    brand_id: str
 
 @dataclass
 class InfluencerProfile:
@@ -54,6 +55,7 @@ class InfluencerProfile:
     platforms: List[str]
     niches: List[str]
     previous_brand_collaborations: int
+    inf_id: str
 
 @dataclass
 class NegotiationState:

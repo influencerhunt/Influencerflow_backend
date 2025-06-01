@@ -1,8 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List, Optional, Union
-import logging
-import asyncio
 from datetime import datetime
+import logging
 import uuid
 
 from app.agents.agent import NegotiationAgent
@@ -79,7 +78,7 @@ def validate_negotiation_status(status: str) -> str:
 def validate_brand_details(data: Dict[str, Any]) -> Dict[str, Any]:
     """Validate brand details dictionary"""
     required_fields = ["name", "budget", "goals", "target_platforms", "content_requirements", 
-                      "campaign_duration_days", "target_audience"]
+                      "campaign_duration_days", "target_audience","brand_id"]
     
     for field in required_fields:
         if field not in data:
@@ -115,7 +114,7 @@ def validate_brand_details(data: Dict[str, Any]) -> Dict[str, Any]:
 
 def validate_influencer_profile(data: Dict[str, Any]) -> Dict[str, Any]:
     """Validate influencer profile dictionary"""
-    required_fields = ["name", "followers", "engagement_rate", "location", "platforms", "niches"]
+    required_fields = ["name", "followers", "engagement_rate", "location", "platforms", "niches","inf_id"]
     
     for field in required_fields:
         if field not in data:
@@ -160,7 +159,8 @@ def create_brand_details_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         "campaign_duration_days": data["campaign_duration_days"],
         "target_audience": data["target_audience"],
         "brand_guidelines": data["brand_guidelines"],
-        "brand_location": data["brand_location"]
+        "brand_location": data["brand_location"],
+        "brand_id": data.get("brand_id", str(uuid.uuid4())) 
     }
 
 def create_influencer_profile_dict(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -172,7 +172,8 @@ def create_influencer_profile_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         "location": data["location"].upper(),
         "platforms": [p.lower() for p in data["platforms"]],
         "niches": data["niches"],
-        "previous_brand_collaborations": data["previous_brand_collaborations"]
+        "previous_brand_collaborations": data["previous_brand_collaborations"],
+        "inf_id": data.get("inf_id", str(uuid.uuid4()))
     }
 
 # ==================== CORE NEGOTIATION ENDPOINTS ====================
@@ -335,6 +336,8 @@ async def get_negotiation_summary(session_id: str):
         return {
             "success": True,
             "session_id": session_id,
+            "brand_id": session_data.get("brand_id") if session_data else None,
+            "inf_id": session_data.get("inf_id") if session_data else None,
             "agent_summary": agent_summary,
             "analytics": analytics,
             "session_data": session_data,
@@ -620,6 +623,44 @@ async def get_analytics_dashboard():
         logger.error(f"Failed to get analytics dashboard: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get dashboard: {str(e)}")
 
+@router.get("/analytics/brand/{brand_id}")
+async def get_brand_analytics(brand_id: str):
+    """Get analytics for a specific brand"""
+    try:
+        if not brand_id:
+            raise ValueError("brand_id is required")
+        
+        analytics = await supabase_manager.get_brand_analytics(brand_id)
+        
+        return {
+            "success": True,
+            "brand_analytics": analytics,
+            "period": "all_time"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get brand analytics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get brand analytics: {str(e)}")
+
+@router.get("/analytics/influencer/{inf_id}")
+async def get_influencer_analytics(inf_id: str):
+    """Get analytics for a specific influencer"""
+    try:
+        if not inf_id:
+            raise ValueError("inf_id is required")
+        
+        analytics = await supabase_manager.get_influencer_analytics(inf_id)
+        
+        return {
+            "success": True,
+            "influencer_analytics": analytics,
+            "period": "all_time"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get influencer analytics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get influencer analytics: {str(e)}")
+
 # ==================== SESSION MANAGEMENT ====================
 
 @router.get("/sessions")
@@ -648,7 +689,9 @@ async def list_sessions(
                 "status": session.get("status", "unknown"),
                 "created_at": session.get("created_at", ""),
                 "brand_name": session.get("brand_details", {}).get("name", "Unknown"),
+                "brand_id": session.get("brand_id"),  # Add brand_id
                 "influencer_name": session.get("influencer_profile", {}).get("name", "Unknown"),
+                "inf_id": session.get("inf_id"),  # Add inf_id
                 "current_round": session.get("negotiation_round", 1),
                 "is_active": session.get("is_active", True)
             })
@@ -719,6 +762,113 @@ async def archive_session(session_id: str):
     except Exception as e:
         logger.error(f"Failed to archive session: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to archive session: {str(e)}")
+
+# ==================== BRAND/INFLUENCER SPECIFIC ENDPOINTS ====================
+
+@router.get("/sessions/brand/{brand_id}")
+async def get_sessions_by_brand(brand_id: str, limit: int = 50):
+    """Get all negotiation sessions for a specific brand"""
+    try:
+        if not brand_id:
+            raise ValueError("brand_id is required")
+        
+        sessions = await supabase_manager.get_sessions_by_brand_id(brand_id, limit)
+        
+        # Format sessions for response
+        formatted_sessions = []
+        for session in sessions:
+            formatted_sessions.append({
+                "session_id": session.get("session_id"),
+                "status": session.get("status", "unknown"),
+                "created_at": session.get("created_at", ""),
+                "brand_name": session.get("brand_details", {}).get("name", "Unknown"),
+                "influencer_name": session.get("influencer_profile", {}).get("name", "Unknown"),
+                "inf_id": session.get("inf_id"),
+                "current_round": session.get("negotiation_round", 1),
+                "is_active": session.get("is_active", True)
+            })
+        
+        return {
+            "success": True,
+            "brand_id": brand_id,
+            "sessions": formatted_sessions,
+            "total_count": len(formatted_sessions)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get sessions for brand {brand_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get brand sessions: {str(e)}")
+
+@router.get("/sessions/influencer/{inf_id}")
+async def get_sessions_by_influencer(inf_id: str, limit: int = 50):
+    """Get all negotiation sessions for a specific influencer"""
+    try:
+        if not inf_id:
+            raise ValueError("inf_id is required")
+        
+        sessions = await supabase_manager.get_sessions_by_inf_id(inf_id, limit)
+        
+        # Format sessions for response
+        formatted_sessions = []
+        for session in sessions:
+            formatted_sessions.append({
+                "session_id": session.get("session_id"),
+                "status": session.get("status", "unknown"),
+                "created_at": session.get("created_at", ""),
+                "brand_name": session.get("brand_details", {}).get("name", "Unknown"),
+                "brand_id": session.get("brand_id"),
+                "influencer_name": session.get("influencer_profile", {}).get("name", "Unknown"),
+                "current_round": session.get("negotiation_round", 1),
+                "is_active": session.get("is_active", True)
+            })
+        
+        return {
+            "success": True,
+            "inf_id": inf_id,
+            "sessions": formatted_sessions,
+            "total_count": len(formatted_sessions)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get sessions for influencer {inf_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get influencer sessions: {str(e)}")
+
+@router.get("/sessions/collaboration/{brand_id}/{inf_id}")
+async def get_sessions_by_collaboration(brand_id: str, inf_id: str, limit: int = 50):
+    """Get all negotiation sessions between a specific brand and influencer"""
+    try:
+        if not brand_id or not inf_id:
+            raise ValueError("Both brand_id and inf_id are required")
+        
+        sessions = await supabase_manager.get_sessions_by_brand_and_inf_id(brand_id, inf_id, limit)
+        
+        # Format sessions for response
+        formatted_sessions = []
+        for session in sessions:
+            formatted_sessions.append({
+                "session_id": session.get("session_id"),
+                "status": session.get("status", "unknown"),
+                "created_at": session.get("created_at", ""),
+                "brand_name": session.get("brand_details", {}).get("name", "Unknown"),
+                "influencer_name": session.get("influencer_profile", {}).get("name", "Unknown"),
+                "current_round": session.get("negotiation_round", 1),
+                "is_active": session.get("is_active", True),
+                "budget": session.get("brand_details", {}).get("budget", 0),
+                "currency": session.get("brand_details", {}).get("budget_currency", "USD")
+            })
+        
+        return {
+            "success": True,
+            "brand_id": brand_id,
+            "inf_id": inf_id,
+            "sessions": formatted_sessions,
+            "total_count": len(formatted_sessions),
+            "collaboration_history": True
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get sessions for brand {brand_id} and influencer {inf_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get collaboration sessions: {str(e)}")
 
 # ==================== UTILITY ENDPOINTS ====================
 

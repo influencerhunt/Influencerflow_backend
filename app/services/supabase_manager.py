@@ -191,6 +191,8 @@ class SupabaseManager:
                 "user_id": validated_user_id,  # This can be None now
                 "brand_details": brand_details,
                 "influencer_profile": influencer_profile,
+                "brand_id": brand_details.get("brand_id"),  # Extract brand_id as separate column
+                "inf_id": influencer_profile.get("inf_id"),  # Extract inf_id as separate column
                 "status": "initiated",
                 "negotiation_round": 1,
                 "current_offer": None,
@@ -284,6 +286,59 @@ class SupabaseManager:
         except Exception as e:
             logger.error(f"Failed to get negotiation session: {e}")
             return None
+
+    async def get_sessions_by_brand_id(self, brand_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get negotiation sessions by brand_id"""
+        try:
+            result = await self.supabase_service.fetch_data(
+                "negotiation_sessions",
+                {"brand_id": brand_id},
+                limit=limit
+            )
+            
+            return result if result else []
+            
+        except Exception as e:
+            logger.error(f"Failed to get sessions by brand_id: {e}")
+            return []
+
+    async def get_sessions_by_inf_id(self, inf_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get negotiation sessions by inf_id"""
+        try:
+            result = await self.supabase_service.fetch_data(
+                "negotiation_sessions",
+                {"inf_id": inf_id},
+                limit=limit
+            )
+            
+            return result if result else []
+            
+        except Exception as e:
+            logger.error(f"Failed to get sessions by inf_id: {e}")
+            return []
+
+    async def get_sessions_by_brand_and_inf_id(
+        self, 
+        brand_id: str, 
+        inf_id: str, 
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Get negotiation sessions by both brand_id and inf_id"""
+        try:
+            # Use custom query for multiple conditions
+            client = self.supabase_service.get_client()
+            result = client.table("negotiation_sessions")\
+                          .select("*")\
+                          .eq("brand_id", brand_id)\
+                          .eq("inf_id", inf_id)\
+                          .limit(limit)\
+                          .execute()
+            
+            return result.data if result.data else []
+            
+        except Exception as e:
+            logger.error(f"Failed to get sessions by brand_id and inf_id: {e}")
+            return []
 
     # ==================== DELIVERABLES MANAGEMENT ====================
     
@@ -516,6 +571,91 @@ class SupabaseManager:
         except Exception as e:
             logger.error(f"Failed to get global analytics: {e}")
             return {}
+
+    async def get_brand_analytics(self, brand_id: str) -> Dict[str, Any]:
+        """Get analytics for a specific brand"""
+        try:
+            # Get sessions for this brand
+            sessions = await self.get_sessions_by_brand_id(brand_id, limit=1000)
+            
+            if not sessions:
+                return {
+                    "brand_id": brand_id,
+                    "total_sessions": 0,
+                    "active_sessions": 0,
+                    "completed_sessions": 0,
+                    "success_rate": 0,
+                    "average_budget": 0,
+                    "total_budget": 0
+                }
+            
+            total_sessions = len(sessions)
+            active_sessions = sum(1 for s in sessions if s.get("is_active", False))
+            completed_sessions = sum(1 for s in sessions if s.get("status") == "agreed")
+            success_rate = (completed_sessions / total_sessions * 100) if total_sessions > 0 else 0
+            
+            budgets = [s.get("brand_details", {}).get("budget", 0) for s in sessions]
+            total_budget = sum(budgets)
+            average_budget = total_budget / len(budgets) if budgets else 0
+            
+            return {
+                "brand_id": brand_id,
+                "total_sessions": total_sessions,
+                "active_sessions": active_sessions,
+                "completed_sessions": completed_sessions,
+                "success_rate": round(success_rate, 2),
+                "average_budget": round(average_budget, 2),
+                "total_budget": total_budget
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get brand analytics: {e}")
+            return {"error": str(e)}
+
+    async def get_influencer_analytics(self, inf_id: str) -> Dict[str, Any]:
+        """Get analytics for a specific influencer"""
+        try:
+            # Get sessions for this influencer
+            sessions = await self.get_sessions_by_inf_id(inf_id, limit=1000)
+            
+            if not sessions:
+                return {
+                    "inf_id": inf_id,
+                    "total_sessions": 0,
+                    "active_sessions": 0,
+                    "completed_sessions": 0,
+                    "success_rate": 0,
+                    "average_deal_value": 0,
+                    "total_earnings": 0
+                }
+            
+            total_sessions = len(sessions)
+            active_sessions = sum(1 for s in sessions if s.get("is_active", False))
+            completed_sessions = sum(1 for s in sessions if s.get("status") == "agreed")
+            success_rate = (completed_sessions / total_sessions * 100) if total_sessions > 0 else 0
+            
+            # Calculate earnings from completed deals
+            completed_session_budgets = [
+                s.get("brand_details", {}).get("budget", 0) 
+                for s in sessions 
+                if s.get("status") == "agreed"
+            ]
+            total_earnings = sum(completed_session_budgets)
+            average_deal_value = total_earnings / len(completed_session_budgets) if completed_session_budgets else 0
+            
+            return {
+                "inf_id": inf_id,
+                "total_sessions": total_sessions,
+                "active_sessions": active_sessions,
+                "completed_sessions": completed_sessions,
+                "success_rate": round(success_rate, 2),
+                "average_deal_value": round(average_deal_value, 2),
+                "total_earnings": total_earnings
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get influencer analytics: {e}")
+            return {"error": str(e)}
 
     # ==================== UTILITY METHODS ====================
     
