@@ -1,0 +1,546 @@
+{
+  "info": {
+    "name": "Negotiation Agent API - Complete Collection",
+    "description": "Comprehensive API testing for the Influencer Negotiation Agent with full Supabase logging",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health & System",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/health",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "health"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Supported Platforms",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/platforms",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "platforms"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Supported Locations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/locations",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "locations"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Core Negotiation",
+      "item": [
+        {
+          "name": "Start Negotiation Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.session_id) {",
+                  "        pm.collectionVariables.set('session_id', response.session_id);",
+                  "        console.log('Session ID saved:', response.session_id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"brand_details\": {\n    \"name\": \"TechFlow Solutions\",\n    \"budget\": 75000,\n    \"budget_currency\": \"INR\",\n    \"goals\": [\"brand awareness\", \"product launch\", \"engagement boost\"],\n    \"target_platforms\": [\"instagram\", \"youtube\"],\n    \"content_requirements\": {\n      \"posts\": 4,\n      \"stories\": 8,\n      \"reels\": 3\n    },\n    \"campaign_duration_days\": 30,\n    \"target_audience\": \"Tech-savvy millennials and Gen Z\",\n    \"brand_guidelines\": \"Modern, professional, tech-focused content with authentic storytelling\",\n    \"brand_location\": \"india\"\n  },\n  \"influencer_profile\": {\n    \"name\": \"TechGuru_Priya\",\n    \"followers\": 185000,\n    \"engagement_rate\": 4.8,\n    \"location\": \"india\",\n    \"platforms\": [\"instagram\", \"youtube\", \"linkedin\"],\n    \"niches\": [\"technology\", \"gadgets\", \"lifestyle\"],\n    \"previous_brand_collaborations\": 32\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/start",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "start"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Continue Negotiation - Interested Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"message\": \"Hi! Thanks for reaching out. I'm really interested in this collaboration with TechFlow Solutions. For this scope of work - 4 posts, 8 stories, and 3 reels - my rates are typically ₹85,000 for the complete package. What do you think?\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/continue",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "continue"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Continue Negotiation - Counter Offer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"message\": \"I appreciate your offer. Could we meet somewhere in the middle at ₹80,000? I really believe this collaboration would be perfect for both of us.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/continue",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "continue"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Continue Negotiation - Agreement",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"message\": \"Perfect! I'm happy to move forward at ₹78,000. Let's create the contract and finalize this partnership!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/continue",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "continue"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Session Management",
+      "item": [
+        {
+          "name": "Get Session Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/session/{{session_id}}/summary",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "session", "{{session_id}}", "summary"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Conversation History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/session/{{session_id}}/conversation",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "session", "{{session_id}}", "conversation"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List All Sessions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/sessions?limit=10&offset=0&status=active",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "sessions"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "status",
+                  "value": "active"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export Session Data",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/session/{{session_id}}/export",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "session", "{{session_id}}", "export"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Deliverables & Budget",
+      "item": [
+        {
+          "name": "Update Deliverables",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deliverables\": {\n    \"posts\": 5,\n    \"stories\": 10,\n    \"reels\": 4,\n    \"youtube_videos\": 1\n  },\n  \"notes\": \"Updated deliverables based on influencer feedback - added YouTube video\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/session/{{session_id}}/deliverables",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "session", "{{session_id}}", "deliverables"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Budget",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_budget\": 90000,\n  \"reason\": \"Increased budget due to additional deliverables and high engagement rates\",\n  \"approved_by\": \"Brand Manager - Sarah Johnson\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/session/{{session_id}}/budget",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "session", "{{session_id}}", "budget"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Contract Management",
+      "item": [
+        {
+          "name": "Generate Contract",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"final_amount\": 78000,\n  \"payment_terms\": \"50% advance payment, 50% upon completion and approval\",\n  \"additional_terms\": \"Content approval required before posting, usage rights for 1 year, deliverables to be completed within 30 days\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/session/{{session_id}}/generate-contract",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "session", "{{session_id}}", "generate-contract"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Contract",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/session/{{session_id}}/contract",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "session", "{{session_id}}", "contract"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Analytics & Reporting",
+      "item": [
+        {
+          "name": "Session Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/analytics/session/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "analytics", "session", "{{session_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Global Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/analytics/global",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "analytics", "global"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7. Session Actions",
+      "item": [
+        {
+          "name": "Archive Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Campaign completed successfully - all deliverables received and approved\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/session/{{session_id}}/archive",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "session", "{{session_id}}", "archive"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Session",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/session/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "session", "{{session_id}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "8. Error Testing",
+      "item": [
+        {
+          "name": "Invalid Session ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/session/invalid-session-id/summary",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "session", "invalid-session-id", "summary"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Missing Required Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"brand_details\": {\n    \"name\": \"Test Brand\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/start",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "start"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid Budget Update",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_budget\": -1000,\n  \"reason\": \"This should fail\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/session/{{session_id}}/budget",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "session", "{{session_id}}", "budget"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "9. Advanced Scenarios",
+      "item": [
+        {
+          "name": "High Budget Negotiation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"brand_details\": {\n    \"name\": \"Premium Luxury Brand\",\n    \"budget\": 250000,\n    \"budget_currency\": \"INR\",\n    \"goals\": [\"luxury brand positioning\", \"high-end audience targeting\"],\n    \"target_platforms\": [\"instagram\", \"youtube\"],\n    \"content_requirements\": {\n      \"posts\": 8,\n      \"stories\": 15,\n      \"reels\": 6,\n      \"youtube_videos\": 2\n    },\n    \"campaign_duration_days\": 45,\n    \"target_audience\": \"High-income luxury consumers\",\n    \"brand_guidelines\": \"Elegant, sophisticated, premium quality focus\",\n    \"brand_location\": \"india\"\n  },\n  \"influencer_profile\": {\n    \"name\": \"LuxuryLifestyle_Maya\",\n    \"followers\": 500000,\n    \"engagement_rate\": 6.2,\n    \"location\": \"india\",\n    \"platforms\": [\"instagram\", \"youtube\"],\n    \"niches\": [\"luxury\", \"fashion\", \"lifestyle\"],\n    \"previous_brand_collaborations\": 58\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/start",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "start"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Micro Influencer Negotiation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"brand_details\": {\n    \"name\": \"Local Food Startup\",\n    \"budget\": 15000,\n    \"budget_currency\": \"INR\",\n    \"goals\": [\"local awareness\", \"authentic reviews\"],\n    \"target_platforms\": [\"instagram\"],\n    \"content_requirements\": {\n      \"posts\": 2,\n      \"stories\": 5,\n      \"reels\": 1\n    },\n    \"campaign_duration_days\": 14,\n    \"target_audience\": \"Food lovers in Mumbai\",\n    \"brand_guidelines\": \"Authentic, casual, foodie-focused content\",\n    \"brand_location\": \"india\"\n  },\n  \"influencer_profile\": {\n    \"name\": \"MumbaiFoodie_Raj\",\n    \"followers\": 25000,\n    \"engagement_rate\": 7.8,\n    \"location\": \"india\",\n    \"platforms\": [\"instagram\"],\n    \"niches\": [\"food\", \"mumbai\", \"restaurants\"],\n    \"previous_brand_collaborations\": 8\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/negotiation-agent/start",
+              "host": ["{{base_url}}"],
+              "path": ["negotiation-agent", "start"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Pre-request script to log request details",
+          "console.log('Making request to:', pm.request.url.toString());"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test script for all requests",
+          "pm.test('Response time is less than 5000ms', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "pm.test('Response has no server errors', function () {",
+          "    pm.expect(pm.response.code).to.be.below(500);",
+          "});"
+        ]
+      }
+    }
+  ]
+}

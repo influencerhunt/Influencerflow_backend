@@ -83,6 +83,13 @@ try:
 except ImportError as e:
     logger.warning(f"Monitoring routes not available: {e}")
 
+try:
+    from app.routers.negotiation_agent import router as negotiation_agent_router
+    app.include_router(negotiation_agent_router, prefix="/api/v1", tags=["negotiation-agent"])
+    logger.info("Negotiation Agent routes loaded")
+except ImportError as e:
+    logger.warning(f"Negotiation Agent routes not available: {e}")
+
 # try:
 #     from app.api.contracts import router as contracts_router
 #     app.include_router(contracts_router, prefix="/api/v1", tags=["contracts"])
