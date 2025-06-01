@@ -1,3 +1,8 @@
+
+# InfluencerFlow Backend - AI-Powered Influencer Search
+
+A comprehensive backend system for searching and discovering social media influencers using AI-powered natural language processing and multi-platform scraping.
+
 # InfluencerFlow Backend - Advanced Negotiation Agent
 
 ## 🎯 Overview
@@ -389,7 +394,40 @@ This project is licensed under the MIT License.
 
 A FastAPI backend with role-based authentication using Supabase and AI-powered negotiation capabilities.
 
-## Features
+
+## 🚀 Features
+
+
+- **AI-Powered Search**: Natural language query parsing using Google Gemini AI
+- **Multi-Platform Support**: Instagram, YouTube, TikTok, Twitter, LinkedIn, Facebook
+- **Hybrid Search**: Combines on-platform (database) and external (web scraping) results
+- **Smart Filtering**: Follower count, engagement rate, price range, location, niche
+- **Real-time Discovery**: Finds influencers not yet on your platform
+- **RESTful API**: FastAPI-based with comprehensive endpoints
+- **Role-based Authentication**: Admin, Influencer, Brand, User roles
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Frontend      │────│   FastAPI API    │────│   AI Parser     │
+│   (React/Vue)   │    │                  │    │   (Gemini)      │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                │
+                    ┌───────────┼───────────┐
+                    │                       │
+            ┌───────▼────────┐    ┌────────▼────────┐
+            │   Database     │    │  External APIs  │
+            │   (Supabase)   │    │  (Serper/Web)   │
+            └────────────────┘    └─────────────────┘
+```
+
+## 📋 Prerequisites
+
+- Python 3.8+
+- Supabase account (for database)
+- Google AI Studio account (for Gemini API)
+- Serper.dev account (for web search)
 
 - **FastAPI** framework for high-performance API
 - **Supabase** integration for authentication and database
@@ -399,6 +437,7 @@ A FastAPI backend with role-based authentication using Supabase and AI-powered n
 - **Voice Call Integration** for automated negotiations
 - **CORS** support for frontend integration
 - **Pydantic** models for request/response validation
+
 
 ## User Roles
 

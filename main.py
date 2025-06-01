@@ -1,5 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.auth import router as auth_router
+from app.api.search import router as search_router
+from app.core.config import settings
+
 import logging
 
 # Configure logging
@@ -29,6 +34,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Include routers
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["authentication"])
+app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
 
 # Try to include routers - handle missing dependencies gracefully
 try:
@@ -72,6 +82,7 @@ try:
     logger.info("Monitoring routes loaded")
 except ImportError as e:
     logger.warning(f"Monitoring routes not available: {e}")
+
 
 @app.get("/")
 async def root():
