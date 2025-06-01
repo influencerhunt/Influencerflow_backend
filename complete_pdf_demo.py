@@ -11,7 +11,7 @@ import requests
 import json
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from app.services.conversation_handler import ConversationHandler
+from app.services.conversation_handler_fixed import ConversationHandler
 from app.services.contract_service import contract_service
 from app.models.negotiation_models import (
     BrandDetails, InfluencerProfile, PlatformType, 

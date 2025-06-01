@@ -1,20 +1,22 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional, Union
-from app.agents import AdvancedNegotiationAgent
+import logging
+from app.agents.negotiation_agent import AdvancedNegotiationAgent
 from app.models.negotiation_models import (
     BrandDetails, InfluencerProfile, PlatformType, LocationType
 )
-from app.services.pricing_service import PricingService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 negotiation_agent = AdvancedNegotiationAgent()
-pricing_service = PricingService()
 
 # Simple pydantic models for FastAPI request validation
 class BrandDetailsRequest(BaseModel):
     name: str
     budget: Union[str, float]  # Accept both string (₹7,500) and float (7500)
+    budget_currency: Optional[str] = None
     goals: List[str]
     target_platforms: List[str]
     content_requirements: Dict[str, int]
@@ -66,14 +68,18 @@ async def start_negotiation(request: StartNegotiationRequest):
         
         # Convert pydantic models to domain dataclasses
         # Parse budget with currency conversion
-        budget_usd, original_currency = pricing_service.parse_budget_amount(request.brand_details.budget)
+        # print(f"Budget USD: {request.brand_details}")
+        # budget_usd, original_currency = pricing_service.parse_budget_amount(request.brand_details.budget)
+        budget_usd = int(request.brand_details.budget)
+        original_currency = request.brand_details.budget_currency
         
         # Extract original budget amount
         original_budget_amount = budget_usd
-        if original_currency != "USD":
-            # Convert back to original currency to get the original amount
-            original_budget_amount = pricing_service.convert_from_usd(budget_usd, original_currency)
-        
+        # if original_currency != "USD":
+        #     # Convert back to original currency to get the original amount
+        #     original_budget_amount = pricing_service.convert_from_usd(budget_usd, original_currency)
+        print(f"Budget USD: {budget_usd}")
+        print(f"Original currency: {original_currency}")
         # Determine brand location from input or budget currency
         brand_location = LocationType.OTHER  # Default
         if request.brand_details.brand_location:
@@ -116,6 +122,8 @@ async def start_negotiation(request: StartNegotiationRequest):
         )
         
         # Start negotiation
+        # print(f"Brand details 123: {brand_details}")
+        # print(f"Influencer profile: {influencer_profile}")
         result = await negotiation_agent.start_negotiation_conversation(
             brand_details, influencer_profile
         )

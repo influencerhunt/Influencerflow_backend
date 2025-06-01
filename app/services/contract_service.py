@@ -3,25 +3,50 @@ import uuid
 import logging
 from typing import Dict, Optional, Any, List
 from datetime import datetime, timedelta
-from dataclasses import asdict
+from dataclasses import dataclass, asdict
 import json
 from jinja2 import Template
 from weasyprint import HTML
 from io import BytesIO
+from enum import Enum
 
 from app.models.negotiation_models import (
     ContractTerms, ContractStatus, DigitalSignature, 
-    NegotiationState, ContentDeliverable
+    NegotiationState, ContentDeliverable,
+    BrandDetails, InfluencerProfile, NegotiationOffer,
+    PlatformType, ContentType, LocationType
 )
-from app.services.pricing_service import PricingService
 
 logger = logging.getLogger(__name__)
+
+@dataclass
+class ContractDeliverable:
+    content_type: str
+    quantity: int
+    rate_per_piece: float
+    total_amount: float
+    description: str
+    deadline: datetime
+
+@dataclass 
+class Contract:
+    contract_id: str
+    brand_name: str
+    influencer_name: str
+    total_amount: float
+    currency: str
+    deliverables: List[ContractDeliverable]
+    terms_and_conditions: str
+    timeline_start: datetime
+    timeline_end: datetime
+    payment_schedule: str
+    created_at: datetime
+    status: str = "draft"
 
 class ContractGenerationService:
     """Service for generating and managing digital contracts"""
     
     def __init__(self):
-        self.pricing_service = PricingService()
         self.contracts: Dict[str, ContractTerms] = {}  # In-memory storage for MVP
         
         # Legal templates
@@ -47,7 +72,7 @@ class ContractGenerationService:
         influencer = negotiation_state.influencer_profile
         
         # Get currency information
-        location_context = self.pricing_service.get_location_context(influencer.location)
+        location_context = self._get_location_context(brand.brand_location)
         currency = location_context["currency"]
         
         # Calculate campaign dates
@@ -168,8 +193,8 @@ class ContractGenerationService:
         deliverables_html = ""
         for i, deliverable in enumerate(contract.deliverables, 1):
             # Convert price to local currency for display
-            price_local = self.pricing_service.convert_from_usd(deliverable.proposed_price, contract.currency)
-            price_formatted = self.pricing_service.format_currency(price_local, contract.currency)
+            price_local = self._convert_from_usd(deliverable.proposed_price, contract.currency)
+            price_formatted = self._format_currency(price_local, contract.currency)
             
             deliverables_html += f"""
             <tr>
@@ -182,8 +207,8 @@ class ContractGenerationService:
             """
         
         # Convert total amount to local currency
-        total_local = self.pricing_service.convert_from_usd(contract.total_amount, contract.currency)
-        total_formatted = self.pricing_service.format_currency(total_local, contract.currency)
+        total_local = self._convert_from_usd(contract.total_amount, contract.currency)
+        total_formatted = self._format_currency(total_local, contract.currency)
         
         # Signature sections
         brand_signature_html = ""
@@ -251,8 +276,8 @@ class ContractGenerationService:
             return {"error": f"Contract {contract_id} not found"}
         
         # Convert amount to local currency
-        total_local = self.pricing_service.convert_from_usd(contract.total_amount, contract.currency)
-        total_formatted = self.pricing_service.format_currency(total_local, contract.currency)
+        total_local = self._convert_from_usd(contract.total_amount, contract.currency)
+        total_formatted = self._format_currency(total_local, contract.currency)
         
         return {
             "contract_id": contract.contract_id,
@@ -453,6 +478,61 @@ class ContractGenerationService:
         """
         return Template(template_str)
 
+    def _format_currency(self, amount: float, currency: str) -> str:
+        """Simple currency formatting."""
+        currency_symbols = {
+            'USD': '$', 'EUR': '€', 'GBP': '£', 'JPY': '¥',
+            'CAD': 'C$', 'AUD': 'A$', 'CHF': 'CHF ', 'CNY': '¥',
+            'INR': '₹', 'BRL': 'R$', 'MXN': 'MX$', 'KRW': '₩'
+        }
+        
+        symbol = currency_symbols.get(currency, f'{currency} ')
+        
+        if currency in ['JPY', 'KRW']:
+            return f"{symbol}{amount:,.0f}"
+        else:
+            return f"{symbol}{amount:,.2f}"
+
+    def _convert_from_usd(self, amount: float, to_currency: str) -> float:
+        """Simple fallback currency conversion from USD."""
+        if to_currency == 'USD':
+            return amount
+        
+        # Approximate exchange rates
+        rates_from_usd = {
+            'EUR': 0.85, 'GBP': 0.79, 'CAD': 1.35, 'AUD': 1.52,
+            'JPY': 150.0, 'INR': 83.0, 'BRL': 5.0, 'MXN': 18.0,
+            'CHF': 0.91, 'CNY': 7.2, 'KRW': 1320.0
+        }
+        
+        rate = rates_from_usd.get(to_currency, 1.0)
+        return amount * rate
+
+    def _get_location_context(self, location: LocationType) -> Dict[str, str]:
+        """Get basic location context."""
+        location_contexts = {
+            LocationType.INDIA: {
+                "payment_methods": "Bank transfer, UPI, or digital wallet",
+                "tax_info": "GST applicable as per Indian tax laws",
+                "currency": "INR"
+            },
+            LocationType.US: {
+                "payment_methods": "ACH transfer or wire transfer", 
+                "tax_info": "1099-NEC will be issued for payments over $600",
+                "currency": "USD"
+            },
+            LocationType.UK: {
+                "payment_methods": "BACS or faster payments",
+                "tax_info": "Subject to UK tax regulations",
+                "currency": "GBP"
+            }
+        }
+        
+        return location_contexts.get(location, {
+            "payment_methods": "International wire transfer",
+            "tax_info": "Subject to local tax regulations", 
+            "currency": "USD"
+        })
 
 # Global instance
 contract_service = ContractGenerationService()

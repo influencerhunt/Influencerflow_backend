@@ -91,7 +91,6 @@ async def start_negotiation(request: StartNegotiationRequest):
             target_audience=request.brand_details.target_audience,
             brand_guidelines=request.brand_details.brand_guidelines
         )
-        
         influencer_profile = InfluencerProfile(
             name=request.influencer_profile.name,
             followers=request.influencer_profile.followers,
@@ -101,8 +100,9 @@ async def start_negotiation(request: StartNegotiationRequest):
             niches=request.influencer_profile.niches,
             previous_brand_collaborations=request.influencer_profile.previous_brand_collaborations
         )
-        
         # Start negotiation
+        print(f"Brand details: {brand_details}")
+        print(f"Influencer profile: {influencer_profile}")
         result = await negotiation_agent.start_negotiation_conversation(
             brand_details, influencer_profile
         )

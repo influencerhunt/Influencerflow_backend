@@ -9,13 +9,14 @@ import json
 from dotenv import load_dotenv
 import logging
 from dataclasses import asdict
+import requests
+from datetime import datetime
 
 from app.models.negotiation_models import (
     BrandDetails, InfluencerProfile, NegotiationState, 
-    NegotiationStatus, PlatformType, ContentType
+    NegotiationStatus, PlatformType, ContentType, LocationType
 )
-from app.services.pricing_service import PricingService
-from app.services.conversation_handler import ConversationHandler
+from app.services.conversation_handler_fixed import ConversationHandler
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -29,7 +30,6 @@ class AdvancedNegotiationAgent:
             temperature=0.7
         )
         
-        self.pricing_service = PricingService()
         self.conversation_handler = ConversationHandler()
         self.memory = ConversationBufferMemory(return_messages=True)
         
@@ -39,97 +39,6 @@ class AdvancedNegotiationAgent:
     def _create_agent_tools(self):
         """Create enhanced tools for the negotiation agent."""
         
-        def calculate_market_rate_tool(input_str: str) -> str:
-            """Calculate market rate for specific influencer and content type."""
-            try:
-                data = json.loads(input_str)
-                
-                # Create InfluencerProfile
-                profile_data = data.get('influencer_profile', {})
-                influencer = InfluencerProfile(
-                    name=profile_data.get('name', 'Influencer'),
-                    followers=profile_data.get('followers', 0),
-                    engagement_rate=profile_data.get('engagement_rate', 0.0),
-                    location=profile_data.get('location', 'OTHER'),
-                    platforms=[PlatformType(p) for p in profile_data.get('platforms', [])],
-                    niches=profile_data.get('niches', [])
-                )
-                
-                platform = PlatformType(data.get('platform'))
-                content_type = ContentType(data.get('content_type'))
-                
-                rate_data = self.pricing_service.calculate_market_rate(
-                    influencer, platform, content_type
-                )
-                
-                return json.dumps({
-                    "platform": platform.value,
-                    "content_type": content_type.value,
-                    "market_rate": rate_data.final_rate,
-                    "base_rate": rate_data.base_rate_per_1k_followers,
-                    "engagement_multiplier": rate_data.engagement_multiplier,
-                    "location_multiplier": rate_data.location_multiplier
-                })
-                
-            except Exception as e:
-                logger.error(f"Error in market rate calculation: {e}")
-                return json.dumps({"error": str(e)})
-
-        def calculate_campaign_cost_tool(input_str: str) -> str:
-            """Calculate total campaign cost with breakdown."""
-            try:
-                data = json.loads(input_str)
-                
-                profile_data = data.get('influencer_profile', {})
-                influencer = InfluencerProfile(
-                    name=profile_data.get('name', 'Influencer'),
-                    followers=profile_data.get('followers', 0),
-                    engagement_rate=profile_data.get('engagement_rate', 0.0),
-                    location=profile_data.get('location', 'OTHER'),
-                    platforms=[PlatformType(p) for p in profile_data.get('platforms', [])],
-                    niches=profile_data.get('niches', [])
-                )
-                
-                content_requirements = data.get('content_requirements', {})
-                
-                cost_breakdown = self.pricing_service.calculate_total_campaign_cost(
-                    influencer, content_requirements
-                )
-                
-                return json.dumps(cost_breakdown)
-                
-            except Exception as e:
-                logger.error(f"Error in campaign cost calculation: {e}")
-                return json.dumps({"error": str(e)})
-
-        def suggest_budget_alternatives_tool(input_str: str) -> str:
-            """Suggest alternatives when budget doesn't align."""
-            try:
-                data = json.loads(input_str)
-                
-                profile_data = data.get('influencer_profile', {})
-                influencer = InfluencerProfile(
-                    name=profile_data.get('name', 'Influencer'),
-                    followers=profile_data.get('followers', 0),
-                    engagement_rate=profile_data.get('engagement_rate', 0.0),
-                    location=profile_data.get('location', 'OTHER'),
-                    platforms=[PlatformType(p) for p in profile_data.get('platforms', [])],
-                    niches=profile_data.get('niches', [])
-                )
-                
-                content_requirements = data.get('content_requirements', {})
-                target_budget = data.get('target_budget', 0)
-                
-                suggestions = self.pricing_service.suggest_alternative_pricing(
-                    influencer, content_requirements, target_budget
-                )
-                
-                return json.dumps(suggestions)
-                
-            except Exception as e:
-                logger.error(f"Error in budget alternatives: {e}")
-                return json.dumps({"error": str(e)})
-
         def analyze_negotiation_context_tool(input_str: str) -> str:
             """Analyze negotiation context and provide strategic insights."""
             try:
@@ -160,28 +69,200 @@ class AdvancedNegotiationAgent:
                 logger.error(f"Error in negotiation analysis: {e}")
                 return json.dumps({"error": str(e)})
 
+        def handle_currency_operations_tool(input_str: str) -> str:
+            """Handle currency conversions, formatting, and exchange rate operations."""
+            try:
+                # Clean input string - remove backticks and extra whitespace
+                cleaned_input = input_str.strip()
+                if cleaned_input.startswith('`') and cleaned_input.endswith('`'):
+                    cleaned_input = cleaned_input[1:-1].strip()
+                
+                # Handle cases where the input might be wrapped in additional quotes
+                if cleaned_input.startswith('"') and cleaned_input.endswith('"'):
+                    cleaned_input = cleaned_input[1:-1]
+                
+                data = json.loads(cleaned_input)
+                operation = data.get('operation', 'convert')
+                
+                if operation == 'convert':
+                    amount = data.get('amount', 0)
+                    from_currency = data.get('from_currency', 'USD').upper()
+                    to_currency = data.get('to_currency', 'USD').upper()
+                    
+                    if from_currency == to_currency:
+                        return json.dumps({
+                            "original_amount": amount,
+                            "converted_amount": amount,
+                            "from_currency": from_currency,
+                            "to_currency": to_currency,
+                            "exchange_rate": 1.0,
+                            "formatted": self._format_currency(amount, to_currency)
+                        })
+                    
+                    # Get exchange rate
+                    exchange_rate = self._get_exchange_rate(from_currency, to_currency)
+                    converted_amount = amount * exchange_rate
+                    
+                    return json.dumps({
+                        "original_amount": amount,
+                        "converted_amount": round(converted_amount, 2),
+                        "from_currency": from_currency,
+                        "to_currency": to_currency,
+                        "exchange_rate": exchange_rate,
+                        "formatted": self._format_currency(converted_amount, to_currency),
+                        "conversion_note": f"{self._format_currency(amount, from_currency)} = {self._format_currency(converted_amount, to_currency)}"
+                    })
+                
+                elif operation == 'format':
+                    amount = data.get('amount', 0)
+                    currency = data.get('currency', 'USD').upper()
+                    
+                    return json.dumps({
+                        "amount": amount,
+                        "currency": currency,
+                        "formatted": self._format_currency(amount, currency)
+                    })
+                
+                elif operation == 'compare_rates':
+                    base_amount = data.get('amount', 0)
+                    base_currency = data.get('currency', 'USD').upper()
+                    target_currencies = data.get('target_currencies', ['EUR', 'GBP', 'CAD'])
+                    
+                    comparisons = {}
+                    for target_currency in target_currencies:
+                        if target_currency.upper() != base_currency:
+                            rate = self._get_exchange_rate(base_currency, target_currency.upper())
+                            converted = base_amount * rate
+                            comparisons[target_currency] = {
+                                "amount": round(converted, 2),
+                                "exchange_rate": rate,
+                                "formatted": self._format_currency(converted, target_currency.upper())
+                            }
+                    
+                    return json.dumps({
+                        "base_amount": base_amount,
+                        "base_currency": base_currency,
+                        "base_formatted": self._format_currency(base_amount, base_currency),
+                        "conversions": comparisons
+                    })
+                
+                elif operation == 'suggest_pricing':
+                    amount_usd = data.get('amount_usd', 0)
+                    influencer_country = data.get('influencer_country', 'US')
+                    
+                    # Map countries to currencies
+                    country_currency_map = {
+                        'US': 'USD', 'CA': 'CAD', 'GB': 'GBP', 'AU': 'AUD',
+                        'DE': 'EUR', 'FR': 'EUR', 'IT': 'EUR', 'ES': 'EUR',
+                        'IN': 'INR', 'BR': 'BRL', 'MX': 'MXN', 'JP': 'JPY'
+                    }
+                    
+                    local_currency = country_currency_map.get(influencer_country, 'USD')
+                    
+                    if local_currency != 'USD':
+                        rate = self._get_exchange_rate('USD', local_currency)
+                        local_amount = amount_usd * rate
+                        
+                        return json.dumps({
+                            "usd_amount": amount_usd,
+                            "local_currency": local_currency,
+                            "local_amount": round(local_amount, 2),
+                            "exchange_rate": rate,
+                            "usd_formatted": self._format_currency(amount_usd, 'USD'),
+                            "local_formatted": self._format_currency(local_amount, local_currency),
+                            "suggestion": f"Consider offering {self._format_currency(local_amount, local_currency)} (approximately {self._format_currency(amount_usd, 'USD')})"
+                        })
+                    else:
+                        return json.dumps({
+                            "usd_amount": amount_usd,
+                            "local_currency": 'USD',
+                            "local_amount": amount_usd,
+                            "formatted": self._format_currency(amount_usd, 'USD')
+                        })
+                
+                else:
+                    return json.dumps({"error": "Unknown operation. Supported: convert, format, compare_rates, suggest_pricing"})
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parsing error in currency operations: {e}. Input was: {input_str}")
+                return json.dumps({
+                    "error": f"Invalid JSON format. Please provide valid JSON. Error: {str(e)}",
+                    "received_input": input_str[:100]  # Show first 100 chars for debugging
+                })
+            except Exception as e:
+                logger.error(f"Error in currency operations: {e}")
+                return json.dumps({"error": str(e)})
+
         self.tools = [
-            Tool(
-                name="calculate_market_rate",
-                func=calculate_market_rate_tool,
-                description="Calculate market rate for specific content type. Input: JSON with influencer_profile, platform, content_type"
-            ),
-            Tool(
-                name="calculate_campaign_cost",
-                func=calculate_campaign_cost_tool,
-                description="Calculate total campaign cost breakdown. Input: JSON with influencer_profile, content_requirements"
-            ),
-            Tool(
-                name="suggest_budget_alternatives",
-                func=suggest_budget_alternatives_tool,
-                description="Suggest alternatives when budget doesn't align. Input: JSON with influencer_profile, content_requirements, target_budget"
-            ),
             Tool(
                 name="analyze_negotiation_context",
                 func=analyze_negotiation_context_tool,
                 description="Analyze negotiation context for strategic insights. Input: JSON with brand_budget, market_rate, influencer_ask"
+            ),
+            Tool(
+                name="handle_currency_operations",
+                func=handle_currency_operations_tool,
+                description="Handle currency conversions and formatting. Operations: 'convert' (amount, from_currency, to_currency), 'format' (amount, currency), 'compare_rates' (amount, currency, target_currencies), 'suggest_pricing' (amount_usd, influencer_country)"
             )
         ]
+
+    def _get_exchange_rate(self, from_currency: str, to_currency: str) -> float:
+        """Get current exchange rate between two currencies."""
+        try:
+            # Try to use a free exchange rate API (exchangerate-api.com)
+            response = requests.get(
+                f"https://api.exchangerate-api.com/v4/latest/{from_currency}",
+                timeout=5
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                rate = data.get('rates', {}).get(to_currency)
+                if rate:
+                    return float(rate)
+            
+            # Fallback to approximate rates if API fails
+            logger.warning(f"API failed for {from_currency} to {to_currency}, using fallback rates")
+            return self._get_fallback_exchange_rate(from_currency, to_currency)
+            
+        except Exception as e:
+            logger.error(f"Error getting exchange rate: {e}")
+            return self._get_fallback_exchange_rate(from_currency, to_currency)
+    
+    def _get_fallback_exchange_rate(self, from_currency: str, to_currency: str) -> float:
+        """Fallback exchange rates (approximate, for when API is unavailable)."""
+        # These are approximate rates and should be updated periodically
+        rates_to_usd = {
+            'USD': 1.0, 'EUR': 1.08, 'GBP': 1.27, 'CAD': 0.74,
+            'AUD': 0.66, 'JPY': 0.0067, 'INR': 0.012, 'BRL': 0.20,
+            'MXN': 0.055, 'CHF': 1.10, 'CNY': 0.14, 'KRW': 0.00076
+        }
+        
+        if from_currency == 'USD':
+            return 1.0 / rates_to_usd.get(to_currency, 1.0)
+        elif to_currency == 'USD':
+            return rates_to_usd.get(from_currency, 1.0)
+        else:
+            # Convert through USD
+            from_to_usd = rates_to_usd.get(from_currency, 1.0)
+            usd_to_target = 1.0 / rates_to_usd.get(to_currency, 1.0)
+            return from_to_usd * usd_to_target
+    
+    def _format_currency(self, amount: float, currency: str) -> str:
+        """Format currency amount with proper symbol and formatting."""
+        currency_symbols = {
+            'USD': '$', 'EUR': '€', 'GBP': '£', 'JPY': '¥',
+            'CAD': 'C$', 'AUD': 'A$', 'CHF': 'CHF ', 'CNY': '¥',
+            'INR': '₹', 'BRL': 'R$', 'MXN': 'MX$', 'KRW': '₩'
+        }
+        
+        symbol = currency_symbols.get(currency, f'{currency} ')
+        
+        # Format based on currency (some don't use decimals)
+        if currency in ['JPY', 'KRW']:
+            return f"{symbol}{amount:,.0f}"
+        else:
+            return f"{symbol}{amount:,.2f}"
 
     def _create_agent(self):
         """Create the LangChain React agent with enhanced conversational abilities."""
@@ -210,6 +291,11 @@ Your primary goal is to secure quality influencer partnerships that deliver ROI 
 AVAILABLE TOOLS: {tools}
 TOOL NAMES: {tool_names}
 
+TOOL USAGE INSTRUCTIONS:
+- When using the handle_currency_operations tool, provide clean JSON without backticks or markdown formatting
+- Example: {{"operation": "convert", "amount": 100, "from_currency": "USD", "to_currency": "EUR"}}
+- Use currency tools when dealing with international influencers or when currency conversion is mentioned
+
 CONVERSATION CONTEXT:
 {chat_history}
 
@@ -220,7 +306,7 @@ Think step by step about how to respond. Use tools when you need data analysis o
 
 Thought: What information do I need to provide the best response?
 Action: [tool name if needed, or skip to Final Answer]
-Action Input: [tool input if using a tool]
+Action Input: [Clean JSON format for tool input - NO backticks or markdown]
 Observation: [tool result if using a tool]
 Thought: Now I can provide a complete response
 Final Answer: [Your conversational response]
@@ -256,6 +342,9 @@ Thought: {agent_scratchpad}
             session_id = self.conversation_handler.create_session(
                 brand_details, influencer_profile
             )
+            print(f"Brand budget currency: {brand_details.budget_currency}")
+            print(f"Brand budget: {brand_details.budget}")
+            
             
             # Generate greeting message
             greeting = self.conversation_handler.generate_greeting_message(session_id)
@@ -411,6 +500,40 @@ async def test_negotiation_agent():
     """Test the negotiation agent with sample data."""
     agent = AdvancedNegotiationAgent()
     
+    # Test currency operations
+    print("🔄 Testing Currency Operations:")
+    
+    # Test currency conversion
+    print("\n💱 Currency Conversion Test:")
+    conv_result = agent.tools[1].func(json.dumps({
+        "operation": "convert",
+        "amount": 1000,
+        "from_currency": "USD",
+        "to_currency": "EUR"
+    }))
+    print(f"USD to EUR conversion: {json.loads(conv_result)}")
+    
+    # Test currency formatting
+    print("\n💰 Currency Formatting Test:")
+    format_result = agent.tools[1].func(json.dumps({
+        "operation": "format",
+        "amount": 2500.50,
+        "currency": "GBP"
+    }))
+    print(f"GBP formatting: {json.loads(format_result)}")
+    
+    # Test pricing suggestions for international influencers
+    print("\n🌍 International Pricing Suggestion Test:")
+    pricing_result = agent.tools[1].func(json.dumps({
+        "operation": "suggest_pricing",
+        "amount_usd": 500,
+        "influencer_country": "DE"
+    }))
+    print(f"German influencer pricing: {json.loads(pricing_result)}")
+    
+    print("\n" + "="*50)
+    print("🤝 Starting Negotiation Test:")
+    
     # Sample brand details
     brand = BrandDetails(
         name="EcoTech Solutions",
@@ -432,7 +555,7 @@ async def test_negotiation_agent():
         name="Alex Green",
         followers=75000,
         engagement_rate=0.065,
-        location="US",
+        location=LocationType.US,
         platforms=[PlatformType.INSTAGRAM, PlatformType.YOUTUBE],
         niches=["sustainability", "technology", "lifestyle"],
         previous_brand_collaborations=12
@@ -442,10 +565,10 @@ async def test_negotiation_agent():
     result = await agent.start_negotiation_conversation(brand, influencer)
     print("🤖 Agent Response:", result["message"])
     
-    # Simulate user responses
+    # Simulate user responses including currency-related questions
     test_responses = [
-        "This looks interesting! The pricing seems a bit high though. Could we discuss the rates?",
-        "I usually charge $300 per Instagram post. Would that work?",
+        "This looks interesting! Could you also show me what this would be in Euros? I'm based in Germany.",
+        "I usually charge €300 per Instagram post. Would that work for your budget?",
         "That sounds fair. I'm interested in moving forward!"
     ]
     

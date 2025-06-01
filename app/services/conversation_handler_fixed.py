@@ -1,15 +1,16 @@
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import json
 import uuid
 import re
 from datetime import datetime
+from dataclasses import dataclass
 from app.models.negotiation_models import (
     NegotiationState, BrandDetails, InfluencerProfile, 
     NegotiationOffer, ContentDeliverable, NegotiationStatus,
     PlatformType, ContentType, LocationType
 )
-from app.services.pricing_service import PricingService
 import logging
+from enum import Enum
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,6 @@ def get_contract_service():
 class ConversationHandler:
     def __init__(self):
         """Handle conversation flow for brand-side negotiations."""
-        self.pricing_service = PricingService()
         self.active_sessions: Dict[str, NegotiationState] = {}
         
         # Conversation templates for different stages - Agent represents the Brand
@@ -112,6 +112,96 @@ Thank you for your professionalism throughout this process. We wish you all the 
 Feel free to reach out if you'd like to discuss future collaboration opportunities."""
         }
 
+    def _format_currency(self, amount: float, currency: str) -> str:
+        """Simple currency formatting."""
+        currency_symbols = {
+            'USD': '$', 'EUR': '€', 'GBP': '£', 'JPY': '¥',
+            'CAD': 'C$', 'AUD': 'A$', 'CHF': 'CHF ', 'CNY': '¥',
+            'INR': '₹', 'BRL': 'R$', 'MXN': 'MX$', 'KRW': '₩'
+        }
+        
+        symbol = currency_symbols.get(currency, f'{currency} ')
+        
+        if currency in ['JPY', 'KRW']:
+            return f"{symbol}{amount:,.0f}"
+        else:
+            return f"{symbol}{amount:,.2f}"
+
+    def _convert_from_usd(self, amount: float, to_currency: str) -> float:
+        """Simple fallback currency conversion from USD."""
+        if to_currency == 'USD':
+            return amount
+        
+        # Approximate exchange rates
+        rates_from_usd = {
+            'EUR': 0.85, 'GBP': 0.79, 'CAD': 1.35, 'AUD': 1.52,
+            'JPY': 150.0, 'INR': 83.0, 'BRL': 5.0, 'MXN': 18.0,
+            'CHF': 0.91, 'CNY': 7.2, 'KRW': 1320.0
+        }
+        
+        rate = rates_from_usd.get(to_currency, 1.0)
+        return amount * rate
+
+    def _convert_to_usd(self, amount: float, from_currency: str) -> float:
+        """Simple fallback currency conversion to USD."""
+        if from_currency == 'USD':
+            return amount
+        
+        # Approximate exchange rates
+        rates_to_usd = {
+            'EUR': 1.18, 'GBP': 1.27, 'CAD': 0.74, 'AUD': 0.66,
+            'JPY': 0.0067, 'INR': 0.012, 'BRL': 0.20, 'MXN': 0.055,
+            'CHF': 1.10, 'CNY': 0.14, 'KRW': 0.00076
+        }
+        
+        rate = rates_to_usd.get(from_currency, 1.0)
+        return amount * rate
+
+    def _generate_budget_constrained_proposal_fixed(
+        self, 
+        brand_budget: float,
+        content_requirements: Dict[str, int],
+        brand_currency: str = "USD"
+    ) -> Dict[str, Any]:
+        """Generate a budget-constrained proposal with basic rates."""
+        
+        # Basic content rates (USD)
+        base_rates = {
+            "instagram_post": 50,
+            "instagram_reel": 75,
+            "instagram_story": 25,
+            "youtube_long_form": 200,
+            "youtube_shorts": 100,
+            "linkedin_post": 40,
+            "linkedin_video": 80,
+            "tiktok_video": 60
+        }
+        
+        total_content_pieces = sum(content_requirements.values())
+        budget_per_piece = brand_budget / total_content_pieces if total_content_pieces > 0 else 0
+        
+        breakdown = {}
+        total_allocated = 0
+        
+        for content_type, count in content_requirements.items():
+            base_rate = base_rates.get(content_type, 50)
+            adjusted_rate = min(base_rate, budget_per_piece)
+            
+            breakdown[content_type] = {
+                "count": count,
+                "rate_per_piece": adjusted_rate,
+                "total": adjusted_rate * count
+            }
+            total_allocated += adjusted_rate * count
+        
+        return {
+            "total_budget": brand_budget,
+            "total_allocated": total_allocated,
+            "remaining_budget": brand_budget - total_allocated,
+            "breakdown": breakdown,
+            "currency": brand_currency
+        }
+
     def create_session(
         self, 
         brand_details: BrandDetails, 
@@ -143,13 +233,15 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         # The brand's budget and currency are used as-is, no conversions
         if hasattr(brand, 'budget_currency') and brand.budget_currency:
             display_currency = brand.budget_currency
+            print(f"Brand budget currency: {display_currency}")
             budget_display = brand.budget  # Use budget as-is in the specified currency
+            print(f"Brand budget: {budget_display}")
         else:
             # Fallback to USD if no currency specified
             display_currency = "USD"
             budget_display = brand.budget
 
-        budget_formatted = self.pricing_service.format_currency(budget_display, display_currency)
+        budget_formatted = self._format_currency(budget_display, display_currency)
 
         # Create content summary
         content_summary = []
@@ -164,7 +256,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
             content_summary=", ".join(content_summary),
             duration=brand.campaign_duration_days
         )
-        
+        print(f"Message: {message}")
         self._add_to_conversation(session_id, "assistant", message)
         return message
 
@@ -187,18 +279,20 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
 
         # For pricing service compatibility, we may need to pass USD values
         # Convert to USD only if needed for internal calculations
-        if brand_currency == "USD":
-            budget_usd = brand_budget
-        else:
-            budget_usd = self.pricing_service.convert_to_usd(brand_budget, brand_currency)
-        
+        # if brand_currency == "USD":
+        #     budget_usd = brand_budget
+        # else:
+        #     budget_usd = self.pricing_service.convert_to_usd(brand_budget, brand_currency)
+        budget_usd = int(brand_budget)
+
+        print(f"Budget USD: {budget_usd}")
+        print(f"Brand currency: {brand_currency}")
         # Generate budget proposal in USD for internal calculations
         brand_location = getattr(brand, 'brand_location', None) or LocationType.US
-        budget_proposal = self.pricing_service.generate_budget_constrained_proposal_fixed(
-            influencer, 
-            brand.content_requirements, 
-            budget_usd,
-            brand_location
+        budget_proposal = self._generate_budget_constrained_proposal_fixed(
+            brand_budget,
+            brand.content_requirements,
+            brand_currency
         )
         
         if "error" in budget_proposal:
@@ -208,25 +302,25 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         rate_breakdown_lines = []
         total_brand_currency = 0
         
-        for content_type, details in budget_proposal["content_breakdown"].items():
+        for content_type, details in budget_proposal["breakdown"].items():
             content_display = content_type.replace('_', ' ').title()
             
             # Extract numeric values from the pricing service output
-            unit_rate_usd = float(details['unit_rate'].replace('₹', '').replace('$', '').replace(',', ''))
-            total_usd = float(details['total'].replace('₹', '').replace('$', '').replace(',', ''))
-            quantity = details['quantity']
+            unit_rate_usd = float(details['rate_per_piece'])
+            total_usd = float(details['total'])
+            quantity = details['count']
             
             # Convert to brand currency
             if brand_currency == "USD":
                 unit_rate_display = unit_rate_usd
                 total_display = total_usd
             else:
-                unit_rate_display = self.pricing_service.convert_from_usd(unit_rate_usd, brand_currency)
-                total_display = self.pricing_service.convert_from_usd(total_usd, brand_currency)
+                unit_rate_display = self._convert_from_usd(unit_rate_usd, brand_currency)
+                total_display = self._convert_from_usd(total_usd, brand_currency)
             
             # Format in brand currency
-            unit_rate_formatted = self.pricing_service.format_currency(unit_rate_display, brand_currency)
-            total_formatted = self.pricing_service.format_currency(total_display, brand_currency)
+            unit_rate_formatted = self._format_currency(unit_rate_display, brand_currency)
+            total_formatted = self._format_currency(total_display, brand_currency)
             
             rate_breakdown_lines.append(
                 f"• {content_display}: {unit_rate_formatted} × {quantity} = {total_formatted}"
@@ -235,7 +329,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
             total_brand_currency += total_display
         
         # Format total in brand currency
-        total_formatted = self.pricing_service.format_currency(total_brand_currency, brand_currency)
+        total_formatted = self._format_currency(total_brand_currency, brand_currency)
         
         # Add cultural context based on location
         cultural_note = ""
@@ -250,7 +344,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         session.current_offer = NegotiationOffer(
             total_price=budget_usd if brand_currency != "USD" else total_brand_currency,
             currency=brand_currency,
-            content_breakdown=budget_proposal["content_breakdown"],
+            content_breakdown=budget_proposal["breakdown"],
             payment_terms="50% advance, 50% on completion",
             timeline_days=brand.campaign_duration_days,
             usage_rights="6 months social media usage",
@@ -264,7 +358,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
             platforms=", ".join([p.value.title() for p in influencer.platforms]),
             rate_breakdown="\n".join(rate_breakdown_lines),
             total_value=total_formatted
-        ) + cultural_note + f"\n\n💰 **Budget Allocation**: This proposal utilizes our full allocated budget of {self.pricing_service.format_currency(brand_budget, brand_currency)} to provide you with competitive compensation."
+        ) + cultural_note + f"\n\n💰 **Budget Allocation**: This proposal utilizes our full allocated budget of {self._format_currency(brand_budget, brand_currency)} to provide you with competitive compensation."
         
         self._add_to_conversation(session_id, "assistant", message)
         return message
@@ -290,7 +384,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
             return self.generate_market_analysis(session_id)
         
         offer = session.current_offer
-        
+        print(f"Offer: {offer}")
         # Format deliverables breakdown in brand currency
         deliverables_lines = []
         total_brand_currency = 0
@@ -299,19 +393,20 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
             content_display = content_type.replace('_', ' ').title()
             
             # Extract values and convert to brand currency
-            unit_rate_usd = float(details['unit_rate'].replace('₹', '').replace('$', '').replace(',', ''))
-            total_usd = float(details['total'].replace('₹', '').replace('$', '').replace(',', ''))
-            quantity = details['quantity']
+            print(f"Details: {details}")
+            unit_rate_usd = float(details['rate_per_piece'])
+            total_usd = float(details['total'])
+            quantity = details['count']
             
             if brand_currency == "USD":
                 unit_rate_display = unit_rate_usd
                 total_display = total_usd
             else:
-                unit_rate_display = self.pricing_service.convert_from_usd(unit_rate_usd, brand_currency)
-                total_display = self.pricing_service.convert_from_usd(total_usd, brand_currency)
+                unit_rate_display = self._convert_from_usd(unit_rate_usd, brand_currency)
+                total_display = self._convert_from_usd(total_usd, brand_currency)
             
-            unit_rate_formatted = self.pricing_service.format_currency(unit_rate_display, brand_currency)
-            total_formatted = self.pricing_service.format_currency(total_display, brand_currency)
+            unit_rate_formatted = self._format_currency(unit_rate_display, brand_currency)
+            total_formatted = self._format_currency(total_display, brand_currency)
             
             deliverables_lines.append(
                 f"• {content_display}: {unit_rate_formatted} × {quantity} = {total_formatted}"
@@ -327,7 +422,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
         else:
             payment_terms = "50% advance, 50% on completion"
         
-        total_formatted = self.pricing_service.format_currency(total_brand_currency, brand_currency)
+        total_formatted = self._format_currency(total_brand_currency, brand_currency)
         
         session.status = NegotiationStatus.IN_PROGRESS
         
@@ -393,19 +488,19 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
                     content_display = content_type.replace('_', ' ').title()
                     
                     # Convert to brand currency
-                    unit_rate_usd = float(details['unit_rate'].replace('₹', '').replace('$', '').replace(',', ''))
-                    total_usd = float(details['total'].replace('₹', '').replace('$', '').replace(',', ''))
-                    quantity = details['quantity']
+                    unit_rate_usd = float(details['rate_per_piece'])
+                    total_usd = float(details['total'])
+                    quantity = details['count']
                     
                     if brand_currency == "USD":
                         unit_rate_display = unit_rate_usd
                         total_display = total_usd
                     else:
-                        unit_rate_display = self.pricing_service.convert_from_usd(unit_rate_usd, brand_currency)
-                        total_display = self.pricing_service.convert_from_usd(total_usd, brand_currency)
+                        unit_rate_display = self._convert_from_usd(unit_rate_usd, brand_currency)
+                        total_display = self._convert_from_usd(total_usd, brand_currency)
                     
-                    unit_rate_formatted = self.pricing_service.format_currency(unit_rate_display, brand_currency)
-                    total_formatted = self.pricing_service.format_currency(total_display, brand_currency)
+                    unit_rate_formatted = self._format_currency(unit_rate_display, brand_currency)
+                    total_formatted = self._format_currency(total_display, brand_currency)
                     
                     final_terms_lines.append(
                         f"• {content_display}: {unit_rate_formatted} × {quantity} = {total_formatted}"
@@ -413,7 +508,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
                     
                     total_brand_currency += total_display
                 
-                total_formatted = self.pricing_service.format_currency(total_brand_currency, brand_currency)
+                total_formatted = self._format_currency(total_brand_currency, brand_currency)
                 
                 final_terms_lines.extend([
                     f"• Total Investment: {total_formatted}",
@@ -496,9 +591,9 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
             difference = abs(counter_price - our_price)
             
             # Format values in brand currency
-            our_price_formatted = self.pricing_service.format_currency(our_price, brand_currency)
-            counter_price_formatted = self.pricing_service.format_currency(counter_price, brand_currency)
-            difference_formatted = self.pricing_service.format_currency(difference, brand_currency)
+            our_price_formatted = self._format_currency(our_price, brand_currency)
+            counter_price_formatted = self._format_currency(counter_price, brand_currency)
+            difference_formatted = self._format_currency(difference, brand_currency)
             
             # Maximum 10% flexibility above budget
             max_allowable = brand_budget * 1.10
@@ -514,7 +609,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
                     if brand_currency == "USD":
                         session.current_offer.total_price = counter_price
                     else:
-                        session.current_offer.total_price = self.pricing_service.convert_to_usd(counter_price, brand_currency)
+                        session.current_offer.total_price = self._convert_to_usd(counter_price, brand_currency)
                 
                 session.status = NegotiationStatus.AGREED
                 
@@ -526,22 +621,22 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
                 # Cultural response based on location
                 if session.influencer_profile.location == LocationType.INDIA:
                     middle_price = (our_price + counter_price) / 2
-                    compromise_suggestion = f"We appreciate your professional approach! Let's meet in the middle. How about {self.pricing_service.format_currency(middle_price, brand_currency)}? This shows our commitment to building a long-term partnership."
+                    compromise_suggestion = f"We appreciate your professional approach! Let's meet in the middle. How about {self._format_currency(middle_price, brand_currency)}? This shows our commitment to building a long-term partnership."
                 elif session.influencer_profile.location == LocationType.US:
                     stretch_price = min(counter_price, max_allowable)
-                    compromise_suggestion = f"Given your quality portfolio, we can stretch our budget slightly. Would {self.pricing_service.format_currency(stretch_price, brand_currency)} work for you?"
+                    compromise_suggestion = f"Given your quality portfolio, we can stretch our budget slightly. Would {self._format_currency(stretch_price, brand_currency)} work for you?"
                 else:
                     solution_price = (our_price + min(counter_price, max_allowable)) / 2
-                    compromise_suggestion = f"We value this collaboration. Let's find a solution at {self.pricing_service.format_currency(solution_price, brand_currency)}?"
+                    compromise_suggestion = f"We value this collaboration. Let's find a solution at {self._format_currency(solution_price, brand_currency)}?"
                 
             else:
                 # Counter-offer exceeds maximum allowable budget
                 overage_amount = counter_price - max_allowable
-                overage_formatted = self.pricing_service.format_currency(overage_amount, brand_currency)
+                overage_formatted = self._format_currency(overage_amount, brand_currency)
                 
                 analysis_response = f"Your request of {counter_price_formatted} exceeds our campaign budget by {overage_formatted}."
                 
-                max_offer_formatted = self.pricing_service.format_currency(max_allowable, brand_currency)
+                max_offer_formatted = self._format_currency(max_allowable, brand_currency)
                 compromise_suggestion = f"Our absolute maximum for this campaign is {max_offer_formatted}. Beyond this, we'd need to reduce content scope or explore a different campaign structure. Would the maximum budget work, or should we consider alternative approaches?"
                 
         else:
@@ -549,7 +644,7 @@ Feel free to reach out if you'd like to discuss future collaboration opportuniti
             analysis_response = "I'd love to discuss your thoughts on the proposal."
             compromise_suggestion = "Could you share your budget expectations so we can find the best path forward?"
             
-            our_price_formatted = self.pricing_service.format_currency(brand_budget, brand_currency)
+            our_price_formatted = self._format_currency(brand_budget, brand_currency)
             counter_price_formatted = "Not specified"
             difference_formatted = "N/A"
         
