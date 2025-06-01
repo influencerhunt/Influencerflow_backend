@@ -136,12 +136,21 @@ async def google_oauth_callback(callback_data: dict):
         else:
             raise HTTPException(status_code=400, detail="Authorization code or access token required")
         
-        # Get or create user profile
-        profile = await UserService.get_or_create_user_profile(
-            auth_response.user.id,
-            auth_response.user.email,
-            auth_response.user.user_metadata.get("role", "user")
-        )
+        # Check if user exists in our database
+        existing_profile = await UserService.get_user_profile(auth_response.user.id)
+        
+        if existing_profile:
+            # Existing user - return their current role
+            user_role = existing_profile.get("role", "user")
+        else:
+            # New user - don't set a default role, let them choose
+            user_role = None
+            # Create profile without role
+            profile = await UserService.get_or_create_user_profile(
+                auth_response.user.id,
+                auth_response.user.email,
+                None  # No default role for new Google OAuth users
+            )
         
         return {
             "access_token": auth_response.session.access_token,
@@ -149,9 +158,9 @@ async def google_oauth_callback(callback_data: dict):
             "user": {
                 "id": auth_response.user.id,
                 "email": auth_response.user.email or "",
-                "role": auth_response.user.user_metadata.get("role", "user"),
-                "full_name": profile.get("full_name") if profile else None,
-                "profile_completed": profile.get("profile_completed", False) if profile else False
+                "role": user_role,  # Will be None for new users
+                "full_name": existing_profile.get("full_name") if existing_profile else None,
+                "profile_completed": existing_profile.get("profile_completed", False) if existing_profile else False
             }
         }
     except HTTPException:
@@ -252,22 +261,35 @@ async def update_user_role(role_data: dict, current_user: dict = Depends(get_cur
         if not new_role:
             raise HTTPException(status_code=400, detail="Role is required")
         
-        if new_role not in ["user", "influencer", "brand", "admin"]:
-            raise HTTPException(status_code=400, detail="Invalid role")
+        if new_role not in ["influencer", "brand"]:
+            raise HTTPException(status_code=400, detail="Invalid role. Must be 'influencer' or 'brand'")
             
         logger.info(f"Updating role for user {user_id} to {new_role}")
         
         # Update user metadata in Supabase
         updated_user = await SupabaseService.update_user_metadata(user_id, {"role": new_role})
         
-        # Also update the profile in our database
-        profile = await UserService.get_or_create_user_profile(user_id, current_user["email"], new_role)
+        # Update or create the profile in our database with the new role
+        profile = await UserService.get_user_profile(user_id)
+        if profile:
+            # Update existing profile
+            profile_update = UserUpdate(role=new_role)
+            updated_profile = await UserService.update_user_profile(user_id, profile_update)
+        else:
+            # Create new profile with role
+            profile = await UserService.get_or_create_user_profile(
+                user_id, 
+                current_user["email"], 
+                new_role
+            )
+            updated_profile = profile
         
         return {
             "id": user_id,
             "email": current_user["email"],
             "role": new_role,
-            "message": "Role updated successfully"
+            "full_name": updated_profile.get("full_name") if updated_profile else None,
+            "profile_completed": updated_profile.get("profile_completed", False) if updated_profile else False
         }
     except HTTPException:
         raise

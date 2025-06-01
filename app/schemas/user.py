@@ -8,13 +8,12 @@ class UserRole(str, Enum):
     ADMIN = "admin"
     BRAND = "brand"
     INFLUENCER = "influencer"
-    USER = "user"
 
 
 class UserBase(BaseModel):
     email: str
     full_name: Optional[str] = None
-    role: UserRole = UserRole.USER
+    role: Optional[UserRole] = None
 
 
 class UserCreate(UserBase):
@@ -32,6 +31,7 @@ class UserUpdate(BaseModel):
     location: Optional[str] = None
     website: Optional[str] = None
     phone: Optional[str] = None
+    role: Optional[str] = None
     
     # Social media handles
     social_instagram: Optional[str] = None

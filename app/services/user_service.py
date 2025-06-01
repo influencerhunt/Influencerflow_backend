@@ -22,7 +22,7 @@ class UserService:
                 id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
                 email TEXT NOT NULL,
                 full_name TEXT,
-                role TEXT NOT NULL DEFAULT 'user',
+                role TEXT,
                 profile_completed BOOLEAN DEFAULT FALSE,
                 
                 -- Profile information
@@ -116,10 +116,11 @@ class UserService:
                 return profile
             
             # If no profile exists, create one
+            # Handle case where role is None (new Google OAuth users)
             profile_data = {
                 'id': user_id,
                 'email': email,
-                'role': role,
+                'role': role,  # Keep as None if not provided
                 'profile_completed': False,
                 'created_at': datetime.utcnow().isoformat(),
                 'updated_at': datetime.utcnow().isoformat()
@@ -138,7 +139,7 @@ class UserService:
             return {
                 'id': user_id,
                 'email': email,
-                'role': role,
+                'role': role,  # Keep as None if not provided
                 'profile_completed': False,
                 'created_at': datetime.utcnow().isoformat(),
                 'updated_at': datetime.utcnow().isoformat()
