@@ -66,7 +66,7 @@ class InfluencerProfile:
 class BrandDetails:
     """Brand campaign details"""
     name: str
-    budget: float  # Total budget for the campaign (must be > 0)
+    budget: float  # Total budget for the campaign in USD (must be > 0)
     goals: List[str]  # Campaign goals
     target_platforms: List[PlatformType]  # Target platforms for the campaign
     content_requirements: Dict[str, int]  # Required content with quantities
@@ -74,6 +74,8 @@ class BrandDetails:
     target_audience: Optional[str] = None  # Target audience description
     brand_guidelines: Optional[str] = None  # Brand guidelines or requirements
     brand_location: Optional[LocationType] = None  # Brand's location for currency handling
+    budget_currency: Optional[str] = None  # Currency for the budget (e.g., "USD", "INR", "EUR")
+    original_budget_amount: Optional[float] = None  # Original budget amount in original currency
     
 @dataclass
 class ContentDeliverable:
@@ -90,12 +92,15 @@ class ContentDeliverable:
 class NegotiationOffer:
     """Complete negotiation offer"""
     total_price: float
-    deliverables: List[ContentDeliverable]
-    campaign_duration_days: int
     payment_terms: str = "50% upfront, 50% on completion"
     revisions_included: int = 2
-    exclusivity_period_days: Optional[int] = None
+    timeline_days: int = 30
     usage_rights: str = "6 months social media usage"
+    currency: Optional[str] = "USD"
+    content_breakdown: Optional[Dict[str, any]] = None
+    deliverables: Optional[List[ContentDeliverable]] = None
+    campaign_duration_days: Optional[int] = None
+    exclusivity_period_days: Optional[int] = None
     
 @dataclass
 class NegotiationState:

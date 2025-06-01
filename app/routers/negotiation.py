@@ -68,6 +68,12 @@ async def start_negotiation(request: StartNegotiationRequest):
         # Parse budget with currency conversion
         budget_usd, original_currency = pricing_service.parse_budget_amount(request.brand_details.budget)
         
+        # Extract original budget amount
+        original_budget_amount = budget_usd
+        if original_currency != "USD":
+            # Convert back to original currency to get the original amount
+            original_budget_amount = pricing_service.convert_from_usd(budget_usd, original_currency)
+        
         # Determine brand location from input or budget currency
         brand_location = LocationType.OTHER  # Default
         if request.brand_details.brand_location:
@@ -94,7 +100,9 @@ async def start_negotiation(request: StartNegotiationRequest):
             campaign_duration_days=request.brand_details.campaign_duration_days,
             target_audience=request.brand_details.target_audience,
             brand_guidelines=request.brand_details.brand_guidelines,
-            brand_location=brand_location
+            brand_location=brand_location,
+            budget_currency=original_currency,  # Preserve original currency
+            original_budget_amount=original_budget_amount  # Store original amount in original currency
         )
         
         influencer_profile = InfluencerProfile(
