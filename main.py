@@ -133,8 +133,7 @@ except ImportError as e:
     logger.warning(f"YouTube service not available: {e}")
 
 
-if __name__ 
-"__main__":
+if __name__  == "__main__":
     import uvicorn
 
     uvicorn.run(

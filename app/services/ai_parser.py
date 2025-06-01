@@ -7,7 +7,7 @@ from app.models.influencer import SearchFilters, PlatformType
 class AIQueryParser:
     def __init__(self):
         # Configure Gemini API
-        genai.configure(api_key=config("GEMINI_API_KEY"))
+        genai.configure(api_key=config("GOOGLE_API_KEY"))
         self.model = genai.GenerativeModel('gemini-2.0-flash')
     
     async def parse_query(self, query: str) -> SearchFilters:

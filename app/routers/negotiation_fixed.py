@@ -512,7 +512,7 @@ async def get_negotiation_summary(session_id: str):
 async def clear_session(session_id: str):
     """Clear a specific negotiation session."""
     try:
-        result = negotiation_agent.clear_session(session_id)
+        result = await negotiation_agent.clear_session(session_id)
         return result
         
     except Exception as e:
@@ -522,7 +522,7 @@ async def clear_session(session_id: str):
 async def list_active_sessions():
     """List all active negotiation sessions."""
     try:
-        result = negotiation_agent.list_active_sessions()
+        result = await negotiation_agent.list_active_sessions()
         return result
         
     except Exception as e:
